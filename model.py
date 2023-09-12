@@ -176,7 +176,7 @@ class embed_net(nn.Module):
         self.classifierP = nn.Linear((self.part_num - 1) * 256, class_num, bias=False)
 
         self.clsParts = nn.ModuleList(
-            [nn.Sequential(nn.BatchNorm1d(256), nn.Linear(256, class_num)) for i in range(self.part_num - 1)])
+            [nn.Sequential(nn.BatchNorm1d(2048), nn.Linear(2048, class_num)) for i in range(self.part_num - 1)])
         self.part = PartModel(self.part_num)
 
     def forward(self, x1, x2, modal=0):
@@ -241,21 +241,27 @@ class embed_net(nn.Module):
             x_pool = self.avgpool(x)
             x_pool = x_pool.view(x_pool.size(0), x_pool.size(1))
 
-        feat_g = self.bottleneck(x_pool)
+
 
         if self.training:
             part, partsFeat = self.part(x, x1, x2, x3)
-            part_masks = F.softmax(F.avg_pool2d(part[0][1] + part[0][1], kernel_size=(4, 4)))
+            part_masks = F.softmax(F.avg_pool2d(part[0][0] + part[0][1], kernel_size=(4, 4))).detach()
             maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:], x) / (h * w)
+            maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:], x3) / (h * w)
             partsScore = []
             featsP = []  # maskedFeat.sum(dim=1)
             for i in range(0, self.part_num - 1):  # 0 is background!
                 feat = self.part_descriptor[i](maskedFeat[:, i])
-                partsScore.append(self.clsParts[i](feat))
+                partsScore.append(self.clsParts[i](maskedFeat[:, i]))
                 featsP.append(feat)
             featsP = torch.cat(featsP, 1)
             scoreP = self.classifierP(featsP)
-            feats = torch.cat([feat_g, featsP], 1)
-            return x_pool, self.classifier(feat_g), part, maskedFeat, part_masks, partsScore, featsP, scoreP
+            # cls = part_masks.max(dim=1)
+            # ids = torch.randint(1, 7, (part_masks.shape[0], 1, 1)).cuda()
+            # indices = (cls == ids).unsqueeze(1).expand(-1, c, -1, -1)
+            feat_g = self.bottleneck(x_pool)
+            # feats = torch.cat([feat_g, featsP], 1)
+            return x_pool, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP
         else:
+            feat_g = self.bottleneck(x_pool)
             return self.l2norm(x_pool), self.l2norm(feat_g)

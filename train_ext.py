@@ -322,16 +322,18 @@ def train(epoch):
         data_time.update(time.time() - end)
 
 
-        feat, out0, part, partsFeat, part_masks, partsScore, featsP, scoreP = net(input1, input2)
+        feat, out0, part, partsFeatX3, partsFeat, part_masks, partsScore, featsP, scoreP = net(input1, input2)
 
         #parts
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]],
                                   [part_labels[good_part], edges[good_part]])  # + loss_reg
-        F = einops.rearrange(featsP, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=2)
-        cont_part2 = contrastive(F.transpose(0, 1))
-        unsup_part = contrastive(partsFeat) + cont_part2
+        F = einops.rearrange(featsP, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)  # b m*p d
+        F2 = einops.rearrange(partsFeat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)
+        cont_part2 = sum([contrastive(f) for f in F2]) / args.batch_size
+        cont_part3 = contrastive(F.transpose(0, 1))
+        unsup_part = contrastive(partsFeatX3) + cont_part2 + cont_part3
         loss_id_parts = sum([criterion_id(ps, labels) / 6 for ps in partsScore]) + criterion_id(scoreP, labels)
         part_seg.update(part_loss.item(), 2 * input1.size(0))
         part_re.update(loss_id_parts.item(), 2 * input1.size(0))
@@ -349,7 +351,9 @@ def train(epoch):
         out2 = out0.narrow(0,2*n,n)
         loss_kl = criterion_kl(out1, Variable(out2))
         # kl_loss += criterion_kl(F.log_softmax(out2, dim = 1), F.softmax(Variable(out1), dim=1))                                           
-                                                    
+        # F = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)
+        # cont_part2 = contrastive(F.transpose(0, 1))
+
         loss_tri, batch_acc = criterion_tri(feat, labels)
         correct += (batch_acc / 2)
         _, predicted = out0.max(1)
