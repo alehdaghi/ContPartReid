@@ -236,6 +236,7 @@ criterionPart = CriterionAll(num_classes=7)
 contrastive = contrastive_loss
 
 criterion_id = nn.CrossEntropyLoss()
+BCE_wl = nn.BCEWithLogitsLoss()
 if args.method == 'agw':
     criterion_tri = TripletLoss_WRT()
     # loader_batch = args.batch_size * args.num_pos
@@ -288,6 +289,7 @@ def train(epoch):
     id_loss = AverageMeter()
     tri_loss = AverageMeter()
     kl_loss = AverageMeter()
+    attr_m = AverageMeter()
     data_time = AverageMeter()
     batch_time = AverageMeter()
     part_seg, part_re , part_un =  AverageMeter(), AverageMeter(), AverageMeter()
@@ -300,7 +302,7 @@ def train(epoch):
     net.train()
     end = time.time()
 
-    for batch_idx, (input10, input11, input2, label1, label2, p_label10, p_label11, p_label2) in enumerate(trainloader):
+    for batch_idx, (input10, input11, input2, label1, label2, p_label10, p_label11, p_label2, attr1, attr2) in enumerate(trainloader):
 
         labels = torch.cat((label1, label1, label2), 0)
 
@@ -318,11 +320,12 @@ def train(epoch):
         imgs = torch.cat((input1, input2,), 0)
 
         part_labels = torch.cat((p_label10, p_label11, p_label2), 0).to(device).type(torch.cuda.LongTensor)
+        attr_labels = torch.cat((attr1, attr1, attr2), 0).to(device).type(torch.cuda.LongTensor)
 
         data_time.update(time.time() - end)
 
 
-        feat, out0, part, partsFeatX3, partsFeat, part_masks, partsScore, featsP, scoreP = net(input1, input2)
+        feat, out0, part, partsFeatX3, partsFeat, part_masks, partsScore, featsP, scoreP, attr_score = net(input1, input2)
 
         #parts
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
@@ -340,6 +343,8 @@ def train(epoch):
         part_un.update(unsup_part.item(), 2 * input1.size(0))
 
         unsup_sum += unsup_part.item()
+
+        attr_loss = sum([criterion_id(attr_score[i], attr_labels[:,i]) for i in range(9)] + [criterion_id(attr_score[-1], attr_labels[:,-1])])
 
         #
         loss_id = criterion_id(out0, labels)
@@ -360,7 +365,7 @@ def train(epoch):
         correct += (predicted.eq(labels).sum().item() / 2)
         
         # pdb.set_trace()
-        loss = loss_id + loss_tri + args.kl * loss_kl + part_loss + unsup_part + loss_id_parts
+        loss = loss_id + loss_tri + args.kl * loss_kl + part_loss + unsup_part + loss_id_parts + attr_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -370,6 +375,7 @@ def train(epoch):
         id_loss.update(loss_id.item(), 2 * input1.size(0))
         tri_loss.update(loss_tri.item(), 2 * input1.size(0))
         kl_loss.update(loss_kl.item(), 2 * input1.size(0))
+        attr_m.update(attr_loss.item(), 2 * input1.size(0))
         total += labels.size(0)
 
         # measure elapsed time
@@ -377,19 +383,20 @@ def train(epoch):
         end = time.time()
         if batch_idx % 50 == 0:
             print('Epoch: [{}][{}/{}] '
-                  'T: {batch_time.val:.3f} ({batch_time.avg:.3f}) '
+                  'T:{batch_time.val:.3f}({batch_time.avg:.3f}) '
                   'lr:{:.3f} '
-                  'L: {train_loss.val:.4f} ({train_loss.avg:.4f}) '
-                  'ID: {id_loss.val:.4f} ({id_loss.avg:.4f}) '
-                  'TR: {tri_loss.val:.4f} ({tri_loss.avg:.4f}) '
-                  'KL: {kl_loss.val:.4f} ({kl_loss.avg:.4f}) '
-                  'Pa: {P_loss.val:.4f} ({P_loss.avg:.4f})'
-                  'Re: {part_re.val:.4f} ({part_re.avg:.4f})'
-                  'Un: {part_un.val:.4f} ({part_un.avg:.4f})'
-                  'A: {:.2f}'.format(
+                  'L:{train_loss.val:.4f}({train_loss.avg:.4f}) '
+                  'ID:{id_loss.val:.4f}({id_loss.avg:.4f}) '
+                  'TR:{tri_loss.val:.4f}({tri_loss.avg:.4f}) '
+                  'KL:{kl_loss.val:.4f}({kl_loss.avg:.4f}) '
+                  'Pa:{P_loss.val:.4f}({P_loss.avg:.4f})'
+                  'Re:{part_re.val:.4f}({part_re.avg:.4f})'
+                  'Un:{part_un.val:.4f}({part_un.avg:.4f})'
+                  'At:{attr_m.val:.4f}({attr_m.avg:.4f})'
+                  'A:{:.2f}'.format(
                 epoch, batch_idx, len(trainloader), current_lr,
                 100. * correct / total, batch_time=batch_time,
-                train_loss=train_loss, id_loss=id_loss, tri_loss=tri_loss,kl_loss=kl_loss, P_loss=part_seg, part_re=part_re, part_un=part_un ))
+                train_loss=train_loss, id_loss=id_loss, tri_loss=tri_loss,kl_loss=kl_loss, P_loss=part_seg, part_re=part_re, part_un=part_un, attr_m=attr_m ))
 
         if batch_idx % 200 == 0:
             B = labels.shape[0]
@@ -401,7 +408,7 @@ def train(epoch):
             pModel = (torch.argmax(part[0][1][index], dim=1) / 6).unsqueeze(1).unsqueeze(1).expand(-1,-1,3,-1,-1)
             sample = torch.cat([invTrans(img), p, pModel, mask], dim=1).view(-1, 3, h, w)
             torchvision.utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(batch_idx).zfill(5)}.png", normilized=True, nrow=10)
-            good_part[index]
+            # good_part[index]
 
     writer.add_scalar('total_loss', train_loss.avg, epoch)
     writer.add_scalar('id_loss', id_loss.avg, epoch)

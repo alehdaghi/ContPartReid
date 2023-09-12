@@ -60,6 +60,8 @@ class SYSUData(data.Dataset):
         self.train_rgb_part = np.load(data_dir + 'train+Val_rgb_resized_part.npy')
         self.train_ir_part = np.load(data_dir + 'train+Val_ir_resized_part.npy')
 
+        self.extra_attr = np.load(data_dir + 'train+Val_feats.npy')
+
         # BGR to RGB
         self.train_color_image = train_color_image
         self.train_thermal_image = train_thermal_image
@@ -113,7 +115,10 @@ class SYSUData(data.Dataset):
         img1_1, parts1_1 = self.transform_color1(img1, parts1)
         img2, parts2 = self.transform_thermal(img2, parts2)
 
-        return img1_0, img1_1, img2, target1, target2, parts1_0, parts1_1, parts2
+        attr1 = self.extra_attr[target1]
+        attr2 = self.extra_attr[target2]
+
+        return img1_0, img1_1, img2, target1, target2, parts1_0, parts1_1, parts2, attr1, attr2
 
     def __len__(self):
         return len(self.train_color_label)

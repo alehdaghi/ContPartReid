@@ -179,6 +179,10 @@ class embed_net(nn.Module):
             [nn.Sequential(nn.BatchNorm1d(2048), nn.Linear(2048, class_num)) for i in range(self.part_num - 1)])
         self.part = PartModel(self.part_num)
 
+        self.extra_cls = nn.ModuleList(
+            [nn.Linear(self.pool_dim, 2, bias=False) for i in range(9)] + [nn.Linear(self.pool_dim, 4, bias=False)]
+        )
+
     def forward(self, x1, x2, modal=0):
         if modal == 0:
             x1 = self.visible_module(x1)
@@ -256,12 +260,16 @@ class embed_net(nn.Module):
                 featsP.append(feat)
             featsP = torch.cat(featsP, 1)
             scoreP = self.classifierP(featsP)
+            feat_g = self.bottleneck(x_pool)
+            # feats = torch.cat([feat_g, featsP], 1)
+            attr_score = [cls(feat_g) for cls in self.extra_cls]
+
             # cls = part_masks.max(dim=1)
             # ids = torch.randint(1, 7, (part_masks.shape[0], 1, 1)).cuda()
             # indices = (cls == ids).unsqueeze(1).expand(-1, c, -1, -1)
-            feat_g = self.bottleneck(x_pool)
+
             # feats = torch.cat([feat_g, featsP], 1)
-            return x_pool, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP
+            return x_pool, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP,attr_score
         else:
             feat_g = self.bottleneck(x_pool)
             return self.l2norm(x_pool), self.l2norm(feat_g)
