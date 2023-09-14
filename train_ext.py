@@ -382,17 +382,17 @@ def train(epoch):
         batch_time.update(time.time() - end)
         end = time.time()
         if batch_idx % 50 == 0:
-            print('Epoch: [{}][{}/{}] '
-                  'T:{batch_time.val:.3f}({batch_time.avg:.3f}) '
+            print('E: [{}][{}/{}] '
+                  'T:{batch_time.val:.2f}({batch_time.avg:.3f}) '
                   'lr:{:.3f} '
-                  'L:{train_loss.val:.4f}({train_loss.avg:.4f}) '
-                  'ID:{id_loss.val:.4f}({id_loss.avg:.4f}) '
-                  'TR:{tri_loss.val:.4f}({tri_loss.avg:.4f}) '
-                  'KL:{kl_loss.val:.4f}({kl_loss.avg:.4f}) '
-                  'Pa:{P_loss.val:.4f}({P_loss.avg:.4f})'
-                  'Re:{part_re.val:.4f}({part_re.avg:.4f})'
-                  'Un:{part_un.val:.4f}({part_un.avg:.4f})'
-                  'At:{attr_m.val:.4f}({attr_m.avg:.4f})'
+                  'L:{train_loss.val:.2f}({train_loss.avg:.3f}) '
+                  'ID:{id_loss.val:.2f}({id_loss.avg:.3f}) '
+                  'TR:{tri_loss.val:.2f}({tri_loss.avg:.3f}) '
+                  'KL:{kl_loss.val:.2f}({kl_loss.avg:.3f}) '
+                  'Pa:{P_loss.val:.2f}({P_loss.avg:.3f}) '
+                  'Re:{part_re.val:.2f}({part_re.avg:.3f}) '
+                  'Un:{part_un.val:.2f}({part_un.avg:.3f}) '
+                  'At:{attr_m.val:.2f}({attr_m.avg:.3f}) '
                   'A:{:.2f}'.format(
                 epoch, batch_idx, len(trainloader), current_lr,
                 100. * correct / total, batch_time=batch_time,
