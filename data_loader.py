@@ -70,7 +70,7 @@ class SYSUData(data.Dataset):
         self.tIndex = thermalIndex
 
         self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        self.erase = ChannelRandomErasing(probability=0.5)
+        self.erase = ChannelRandomErasing(probability=0.0)
         self.exchange = ChannelExchange(gray=2)
         self.adap = ChannelAdapGray(probability=0.5)
         # self.transform_thermal = transforms.Compose( [
@@ -150,9 +150,9 @@ class SYSUData(data.Dataset):
         # ChannelAdapGray(probability=0.5)
         img, part = self.common(img, part)
         img, param = self.erase(img)
-        # if param is not None:
-        #     x1, y1, h, w = param
-        #     part[x1:x1 + h, y1:y1 + w] = 255
+        if param is not None:
+            x1, y1, h, w = param
+            part[x1:x1 + h, y1:y1 + w] = 255
 
         return self.adap(img), part
 
@@ -172,9 +172,9 @@ class SYSUData(data.Dataset):
         # ChannelExchange(gray = 2)
         img, part = self.common(img, part)
         img, param = self.erase(img)
-        # if param is not None:
-        #     x1, y1, h, w = param
-        #     part[x1:x1 + h, y1:y1 + w] = 255
+        if param is not None:
+            x1, y1, h, w = param
+            part[x1:x1 + h, y1:y1 + w] = 255
         return self.exchange(img), part
 
 
