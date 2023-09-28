@@ -407,7 +407,21 @@ def train(epoch):
             mask =  part[0][1][index].unsqueeze(2).expand(-1,-1,3,-1,-1)
             pModel = (torch.argmax(part[0][1][index], dim=1) / 6).unsqueeze(1).unsqueeze(1).expand(-1,-1,3,-1,-1)
             sample = torch.cat([invTrans(img), p, pModel, mask], dim=1).view(-1, 3, h, w)
+
             torchvision.utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(batch_idx).zfill(5)}.png", normilized=True, nrow=10)
+            with open(f"sample/part_{str(epoch + 1).zfill(5)}_{str(batch_idx).zfill(5)}.txt", 'w') as file:
+                tr = attr_labels[index]
+                pr = torch.stack([out[index].max(1)[1] for out in attr_score]).t()
+                ll = ['sex', 'hair', 'glass', 'T-sh', 'V-ne', 'text', 'jack', 'skirt', 'pants', 'shoes']
+                for i in range(len(tr)):
+                    for j in range(len(ll)):
+                        file.write(f"{ll[j]}: {tr[i][j]}-{pr[i][j]} ")
+                    file.write("\n")
+                file.flush()
+
+
+
+
             # good_part[index]
 
     writer.add_scalar('total_loss', train_loss.avg, epoch)
