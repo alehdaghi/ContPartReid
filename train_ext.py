@@ -494,7 +494,7 @@ def test(epoch):
 
 # training
 print('==> Start Training...')
-for epoch in range(start_epoch, 100 ):
+for epoch in range(start_epoch, 140 ):
 
     print('==> Preparing Data Loader...')
     # identity sampler
