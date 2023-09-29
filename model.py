@@ -245,31 +245,48 @@ class embed_net(nn.Module):
             x_pool = self.avgpool(x)
             x_pool = x_pool.view(x_pool.size(0), x_pool.size(1))
 
+        feat_g = self.bottleneck(x_pool)
+        # attr_score = [cls(feat_g) for cls in self.extra_cls]
+        attr_score = [None] * 10
 
 
-        if self.training:
-            part, partsFeat = self.part(x, x1, x2, x3)
-            part_masks = F.softmax(F.avg_pool2d(part[0][0] + part[0][1], kernel_size=(4, 4))).detach()
-            maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:], x) / (h * w)
-            maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:], x3) / (h * w)
-            partsScore = []
-            featsP = []  # maskedFeat.sum(dim=1)
-            for i in range(0, self.part_num - 1):  # 0 is background!
-                feat = self.part_descriptor[i](maskedFeat[:, i])
-                partsScore.append(self.clsParts[i](maskedFeat[:, i]))
-                featsP.append(feat)
-            featsP = torch.cat(featsP, 1)
-            scoreP = self.classifierP(featsP)
-            feat_g = self.bottleneck(x_pool)
+        part, partsFeat = self.part(x, x1, x2, x3)
+        part_masks = F.softmax(F.avg_pool2d(part[0][0] + part[0][1], kernel_size=(4, 4))).detach()
+        maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:], x) / (h * w)
+        maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:], x3) / (h * w)
+        partsScore = []
+        featsP = []  # maskedFeat.sum(dim=1)
+        for i in range(0, self.part_num - 1):  # 0 is background!
+            feat = self.part_descriptor[i](maskedFeat[:, i])
+            partsScore.append(self.clsParts[i](maskedFeat[:, i]))
+            featsP.append(feat)
+
+        # 0: head, 1: torso, 2: upper arm, 3:lower arm, 4: upper leg, 5: lower leg
+        attr_score[0] = self.extra_cls[0](maskedFeat[:, 0]) # sex
+        attr_score[1] = self.extra_cls[1](maskedFeat[:, 0])  # long hair
+        attr_score[2] = self.extra_cls[2](maskedFeat[:, 0])  # glass
+        attr_score[3] = self.extra_cls[3](maskedFeat[:, 2] + maskedFeat[:, 3])  # long shirt
+        attr_score[4] = self.extra_cls[4](maskedFeat[:, 0] + maskedFeat[:, 1])  # V neck
+        attr_score[5] = self.extra_cls[5]( maskedFeat[:, 1])  # text on shirt
+        attr_score[6] = self.extra_cls[6](maskedFeat[:, 0] + maskedFeat[:, 1])  # is jacket
+        attr_score[7] = self.extra_cls[7](maskedFeat[:, 4] + maskedFeat[:, 5])  # is skirt
+        attr_score[8] = self.extra_cls[8](maskedFeat[:, 4] + maskedFeat[:, 5])  # is pants
+        attr_score[9] = self.extra_cls[9]( maskedFeat[:, 5])  # shoes
+
+        featsP = torch.cat(featsP, 1)
+        scoreP = self.classifierP(featsP)
+
             # feats = torch.cat([feat_g, featsP], 1)
-            attr_score = [cls(feat_g) for cls in self.extra_cls]
+            # attr_score = [cls(feat_g) for cls in self.extra_cls]
 
             # cls = part_masks.max(dim=1)
             # ids = torch.randint(1, 7, (part_masks.shape[0], 1, 1)).cuda()
             # indices = (cls == ids).unsqueeze(1).expand(-1, c, -1, -1)
 
             # feats = torch.cat([feat_g, featsP], 1)
-            return x_pool, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP,attr_score
+
+
+        if self.training:
+            return x_pool, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP, attr_score
         else:
-            feat_g = self.bottleneck(x_pool)
-            return self.l2norm(x_pool), self.l2norm(feat_g)
+            return self.l2norm(x_pool), self.l2norm(feat_g), attr_score

@@ -438,13 +438,15 @@ def test(epoch):
     ptr = 0
     gall_feat = np.zeros((ngall, 2048))
     gall_feat_att = np.zeros((ngall, 2048))
+    gall_attr = np.zeros((ngall, 10))
     with torch.no_grad():
         for batch_idx, (input, label) in enumerate(gall_loader):
             batch_num = input.size(0)
             input = Variable(input.cuda())
-            feat, feat_att = net(input, input, test_mode[0])
+            feat, feat_att, attr_score = net(input, input, test_mode[0])
             gall_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             gall_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
+            gall_attr[ptr:ptr + batch_num, :] = torch.stack([out.max(1)[1] for out in attr_score]).t().cpu().numpy()
             ptr = ptr + batch_num
     print('Extracting Time:\t {:.3f}'.format(time.time() - start))
 
@@ -455,13 +457,15 @@ def test(epoch):
     ptr = 0
     query_feat = np.zeros((nquery, 2048))
     query_feat_att = np.zeros((nquery, 2048))
+    query_attr = np.zeros((nquery, 10))
     with torch.no_grad():
         for batch_idx, (input, label) in enumerate(query_loader):
             batch_num = input.size(0)
             input = Variable(input.cuda())
-            feat, feat_att = net(input, input, test_mode[1])
+            feat, feat_att, attr_score = net(input, input, test_mode[1])
             query_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             query_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
+            query_attr[ptr:ptr + batch_num, :] = torch.stack([out.max(1)[1] for out in attr_score]).t().cpu().numpy()
             ptr = ptr + batch_num
     print('Extracting Time:\t {:.3f}'.format(time.time() - start))
 
@@ -490,7 +494,7 @@ def test(epoch):
 
 # training
 print('==> Start Training...')
-for epoch in range(start_epoch, 100 - start_epoch):
+for epoch in range(start_epoch, 100 ):
 
     print('==> Preparing Data Loader...')
     # identity sampler
