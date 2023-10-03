@@ -365,7 +365,7 @@ def train(epoch):
         correct += (predicted.eq(labels).sum().item() / 2)
         
         # pdb.set_trace()
-        loss = loss_id + loss_tri + args.kl * loss_kl + part_loss + unsup_part + loss_id_parts + attr_loss
+        loss = loss_id + loss_tri + args.kl * loss_kl + part_loss + unsup_part + loss_id_parts #+ attr_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()

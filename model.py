@@ -251,9 +251,10 @@ class embed_net(nn.Module):
 
 
         part, partsFeat = self.part(x, x1, x2, x3)
+        part_masks3 = F.softmax(part[0][0] + part[0][1])
         part_masks = F.softmax(F.avg_pool2d(part[0][0] + part[0][1], kernel_size=(4, 4))).detach()
         maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:], x) / (h * w)
-        maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:], x3) / (h * w)
+        maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks3[:, 1:], x3) / (16 * h * w)
         partsScore = []
         featsP = []  # maskedFeat.sum(dim=1)
         for i in range(0, self.part_num - 1):  # 0 is background!
