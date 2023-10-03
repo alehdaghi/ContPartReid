@@ -70,7 +70,7 @@ class SYSUData(data.Dataset):
         self.tIndex = thermalIndex
 
         self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        self.erase = ChannelRandomErasing(probability=0.0)
+        self.erase = ChannelRandomErasing(probability=0.5)
         self.exchange = ChannelExchange(gray=2)
         self.adap = ChannelAdapGray(probability=0.5)
         # self.transform_thermal = transforms.Compose( [
