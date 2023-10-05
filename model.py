@@ -184,16 +184,21 @@ class embed_net(nn.Module):
         )
 
     def forward(self, x1, x2, modal=0):
-        nv = x1.shape[0] # visible
-        ni = x2.shape[0] # infrared
+        sub1 = torch.ones(x1.shape[0]) == 0
+        sub2 = torch.ones(x2.shape[0]) == 1
+
+        sub = x = torch.cat((sub1, sub2), 0)
         if modal == 0:
             x1 = self.visible_module(x1)
             x2 = self.thermal_module(x2)
             x = torch.cat((x1, x2), 0)
+
         elif modal == 1:
             x = self.visible_module(x1)
+            sub = sub1
         elif modal == 2:
             x = self.thermal_module(x2)
+            sub = sub2
 
 
         # shared block
@@ -288,7 +293,7 @@ class embed_net(nn.Module):
 
             # feats = torch.cat([feat_g, featsP], 1)
         feat_b = torch.cat([x_pool, featsP], 1)
-        feat = self.bottleneck(feat_b, nv, ni)
+        feat = self.bottleneck(feat_b, sub)
         feat_g = feat[:, :2048]
         if self.training:
             return feat, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP, attr_score
@@ -308,10 +313,9 @@ class DualBNNeck(nn.Module):
         self.bn_neck_v.bias.requires_grad_(False)
         self.bn_neck_i.bias.requires_grad_(False)
 
-    def forward(self, x, nv, ni):
-        i = torch.range(0, nv+ni)
-        mask_v = i < nv
-        mask_i = i >= nv
+    def forward(self, x, sub):
+        mask_i = sub == 1
+        mask_v = sub == 0
 
         x[mask_i] = self.bn_neck_i(x[mask_i])
         x[mask_v] = self.bn_neck_v(x[mask_v])
