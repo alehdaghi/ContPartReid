@@ -259,8 +259,8 @@ if args.optim == 'sgd':
 
     optimizer = optim.SGD([
         {'params': base_params, 'lr': 0.1 * args.lr},
-        {'params': net.bottleneck.parameters(), 'lr': args.lr},
-        {'params': net.classifier.parameters(), 'lr': args.lr}],
+        {'params': net.bottleneck.parameters(), 'lr': 0.5 * args.lr},
+        {'params': net.classifier.parameters(), 'lr': 0.5 * args.lr}],
         weight_decay=5e-4, momentum=0.9, nesterov=True)
 
 # exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
@@ -277,7 +277,7 @@ def adjust_learning_rate(optimizer, epoch):
 
     optimizer.param_groups[0]['lr'] = 0.1 * lr
     for i in range(len(optimizer.param_groups) - 1):
-        optimizer.param_groups[i + 1]['lr'] = lr
+        optimizer.param_groups[i + 1]['lr'] = 0.5 * lr
 
     return lr
 
@@ -337,14 +337,14 @@ def train(epoch):
         cont_part2 = sum([contrastive(f) for f in F2]) / args.batch_size
         cont_part3 = contrastive(F.transpose(0, 1))
         unsup_part = contrastive(partsFeatX3) + cont_part2 + cont_part3
-        loss_id_parts = sum([criterion_id(ps, labels) / 6 for ps in partsScore]) + criterion_id(scoreP, labels)
+        loss_id_parts = sum([criterion_id(ps, labels) / 6 for ps in partsScore]) #+ criterion_id(scoreP, labels)
         part_seg.update(part_loss.item(), 2 * input1.size(0))
         part_re.update(loss_id_parts.item(), 2 * input1.size(0))
         part_un.update(unsup_part.item(), 2 * input1.size(0))
 
         unsup_sum += unsup_part.item()
 
-        attr_loss = sum([criterion_id(attr_score[i], attr_labels[:,i]) for i in range(9)] + [criterion_id(attr_score[-1], attr_labels[:,-1])])
+        attr_loss = torch.tensor(0)#sum([criterion_id(attr_score[i], attr_labels[:,i]) for i in range(9)] + [criterion_id(attr_score[-1], attr_labels[:,-1])])
 
         #
         loss_id = criterion_id(out0, labels)
@@ -360,9 +360,9 @@ def train(epoch):
         # cont_part2 = contrastive(F.transpose(0, 1))
 
         loss_tri, batch_acc = criterion_tri(feat, labels)
-        correct += (batch_acc / 2)
+        # correct += (batch_acc / 2)
         _, predicted = out0.max(1)
-        correct += (predicted.eq(labels).sum().item() / 2)
+        correct += (predicted.eq(labels).sum().item())
         
         # pdb.set_trace()
         loss = loss_id + loss_tri + args.kl * loss_kl + part_loss + unsup_part + loss_id_parts #+ attr_loss
@@ -409,15 +409,15 @@ def train(epoch):
             sample = torch.cat([invTrans(img), p, pModel, mask], dim=1).view(-1, 3, h, w)
 
             torchvision.utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(batch_idx).zfill(5)}.png", normilized=True, nrow=10)
-            with open(f"sample/part_{str(epoch + 1).zfill(5)}_{str(batch_idx).zfill(5)}.txt", 'w') as file:
-                tr = attr_labels[index]
-                pr = torch.stack([out[index].max(1)[1] for out in attr_score]).t()
-                ll = ['sex', 'hair', 'glass', 'T-sh', 'V-ne', 'text', 'jack', 'skirt', 'pants', 'shoes']
-                for i in range(len(tr)):
-                    for j in range(len(ll)):
-                        file.write(f"{ll[j]}: {tr[i][j]}-{pr[i][j]} ")
-                    file.write("\n")
-                file.flush()
+            # with open(f"sample/part_{str(epoch + 1).zfill(5)}_{str(batch_idx).zfill(5)}.txt", 'w') as file:
+            #     tr = attr_labels[index]
+            #     pr = torch.stack([out[index].max(1)[1] for out in attr_score]).t()
+            #     ll = ['sex', 'hair', 'glass', 'T-sh', 'V-ne', 'text', 'jack', 'skirt', 'pants', 'shoes']
+            #     for i in range(len(tr)):
+            #         for j in range(len(ll)):
+            #             file.write(f"{ll[j]}: {tr[i][j]}-{pr[i][j]} ")
+            #         file.write("\n")
+            #     file.flush()
 
 
 
@@ -436,8 +436,8 @@ def test(epoch):
     print('Extracting Gallery Feature...')
     start = time.time()
     ptr = 0
-    gall_feat = np.zeros((ngall, 2048))
-    gall_feat_att = np.zeros((ngall, 2048))
+    gall_feat = np.zeros((ngall, 2048 + 6 * 2048))
+    gall_feat_att = np.zeros((ngall, 2048+ 6 * 2048))
     gall_attr = np.zeros((ngall, 10))
     with torch.no_grad():
         for batch_idx, (input, label) in enumerate(gall_loader):
@@ -446,7 +446,7 @@ def test(epoch):
             feat, feat_att, attr_score = net(input, input, test_mode[0])
             gall_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             gall_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
-            gall_attr[ptr:ptr + batch_num, :] = torch.stack([out.max(1)[1] for out in attr_score]).t().cpu().numpy()
+            # gall_attr[ptr:ptr + batch_num, :] = torch.stack([out.max(1)[1] for out in attr_score]).t().cpu().numpy()
             ptr = ptr + batch_num
     print('Extracting Time:\t {:.3f}'.format(time.time() - start))
 
@@ -455,8 +455,8 @@ def test(epoch):
     print('Extracting Query Feature...')
     start = time.time()
     ptr = 0
-    query_feat = np.zeros((nquery, 2048))
-    query_feat_att = np.zeros((nquery, 2048))
+    query_feat = np.zeros((nquery, 2048+ 6 * 2048))
+    query_feat_att = np.zeros((nquery, 2048+ 6 * 2048))
     query_attr = np.zeros((nquery, 10))
     with torch.no_grad():
         for batch_idx, (input, label) in enumerate(query_loader):
@@ -465,7 +465,7 @@ def test(epoch):
             feat, feat_att, attr_score = net(input, input, test_mode[1])
             query_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             query_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
-            query_attr[ptr:ptr + batch_num, :] = torch.stack([out.max(1)[1] for out in attr_score]).t().cpu().numpy()
+            # query_attr[ptr:ptr + batch_num, :] = torch.stack([out.max(1)[1] for out in attr_score]).t().cpu().numpy()
             ptr = ptr + batch_num
     print('Extracting Time:\t {:.3f}'.format(time.time() - start))
 

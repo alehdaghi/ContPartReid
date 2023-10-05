@@ -159,12 +159,12 @@ class embed_net(nn.Module):
 
         self.pool_dim = 2048
         self.l2norm = Normalize(2)
-        self.bottleneck = nn.BatchNorm1d(self.pool_dim)
-        self.bottleneck.bias.requires_grad_(False)  # no shift
+        self.bottleneck = DualBNNeck(self.pool_dim + 6 * 2048)
+        # self.bottleneck.bias.requires_grad_(False)  # no shift
 
         self.classifier = nn.Linear(self.pool_dim, class_num, bias=False)
 
-        self.bottleneck.apply(weights_init_kaiming)
+        # self.bottleneck.apply(weights_init_kaiming)
         self.classifier.apply(weights_init_classifier)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.gm_pool = gm_pool
@@ -184,6 +184,8 @@ class embed_net(nn.Module):
         )
 
     def forward(self, x1, x2, modal=0):
+        nv = x1.shape[0] # visible
+        ni = x2.shape[0] # infrared
         if modal == 0:
             x1 = self.visible_module(x1)
             x2 = self.thermal_module(x2)
@@ -245,37 +247,37 @@ class embed_net(nn.Module):
             x_pool = self.avgpool(x)
             x_pool = x_pool.view(x_pool.size(0), x_pool.size(1))
 
-        feat_g = self.bottleneck(x_pool)
+        # feat_g = self.bottleneck(x_pool)
         # attr_score = [cls(feat_g) for cls in self.extra_cls]
         attr_score = [None] * 10
 
 
-        part, partsFeat = self.part(x, x1, x2, x3)
+        part, partsFeat = self.part(x.detach(), x1.detach(), x2.detach(), x3.detach())
         part_masks3 = F.softmax(part[0][0] + part[0][1])
-        part_masks = F.softmax(F.avg_pool2d(part[0][0] + part[0][1], kernel_size=(4, 4))).detach()
-        maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:], x) / (h * w)
-        maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks3[:, 1:], partsFeat) / (16 * h * w)
+        part_masks = F.softmax(F.avg_pool2d(part[0][0] + part[0][1], kernel_size=(4, 4)))
+        maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:].detach(), x) / (h * w)
+        maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks3[:, 1:].detach(), partsFeat) / (16 * h * w)
         partsScore = []
         featsP = []  # maskedFeat.sum(dim=1)
         for i in range(0, self.part_num - 1):  # 0 is background!
             feat = self.part_descriptor[i](maskedFeat[:, i])
             partsScore.append(self.clsParts[i](maskedFeat[:, i]))
-            featsP.append(feat)
+            featsP.append(maskedFeat[:, i])
 
         # 0: head, 1: torso, 2: upper arm, 3:lower arm, 4: upper leg, 5: lower leg
-        attr_score[0] = self.extra_cls[0](maskedFeat[:, 0]) # sex
-        attr_score[1] = self.extra_cls[1](maskedFeat[:, 0])  # long hair
-        attr_score[2] = self.extra_cls[2](maskedFeat[:, 0])  # glass
-        attr_score[3] = self.extra_cls[3](maskedFeat[:, 2] + maskedFeat[:, 3])  # long shirt
-        attr_score[4] = self.extra_cls[4](maskedFeat[:, 0] + maskedFeat[:, 1])  # V neck
-        attr_score[5] = self.extra_cls[5]( maskedFeat[:, 1])  # text on shirt
-        attr_score[6] = self.extra_cls[6](maskedFeat[:, 0] + maskedFeat[:, 1])  # is jacket
-        attr_score[7] = self.extra_cls[7](maskedFeat[:, 4] + maskedFeat[:, 5])  # is skirt
-        attr_score[8] = self.extra_cls[8](maskedFeat[:, 4] + maskedFeat[:, 5])  # is pants
-        attr_score[9] = self.extra_cls[9]( maskedFeat[:, 5])  # shoes
+        # attr_score[0] = self.extra_cls[0](maskedFeat[:, 0]) # sex
+        # attr_score[1] = self.extra_cls[1](maskedFeat[:, 0])  # long hair
+        # attr_score[2] = self.extra_cls[2](maskedFeat[:, 0])  # glass
+        # attr_score[3] = self.extra_cls[3](maskedFeat[:, 2] + maskedFeat[:, 3])  # long shirt
+        # attr_score[4] = self.extra_cls[4](maskedFeat[:, 0] + maskedFeat[:, 1])  # V neck
+        # attr_score[5] = self.extra_cls[5]( maskedFeat[:, 1])  # text on shirt
+        # attr_score[6] = self.extra_cls[6](maskedFeat[:, 0] + maskedFeat[:, 1])  # is jacket
+        # attr_score[7] = self.extra_cls[7](maskedFeat[:, 4] + maskedFeat[:, 5])  # is skirt
+        # attr_score[8] = self.extra_cls[8](maskedFeat[:, 4] + maskedFeat[:, 5])  # is pants
+        # attr_score[9] = self.extra_cls[9]( maskedFeat[:, 5])  # shoes
 
         featsP = torch.cat(featsP, 1)
-        scoreP = self.classifierP(featsP)
+        scoreP = None#self.classifierP(featsP)
 
             # feats = torch.cat([feat_g, featsP], 1)
             # attr_score = [cls(feat_g) for cls in self.extra_cls]
@@ -285,9 +287,33 @@ class embed_net(nn.Module):
             # indices = (cls == ids).unsqueeze(1).expand(-1, c, -1, -1)
 
             # feats = torch.cat([feat_g, featsP], 1)
-
-
+        feat_b = torch.cat([x_pool, featsP], 1)
+        feat = self.bottleneck(feat_b, nv, ni)
+        feat_g = feat[:, :2048]
         if self.training:
-            return x_pool, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP, attr_score
+            return feat, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP, attr_score
         else:
-            return self.l2norm(x_pool), self.l2norm(feat_g), attr_score
+            return self.l2norm(feat_b), self.l2norm(feat), attr_score
+
+
+
+class DualBNNeck(nn.Module):
+    def __init__(self, dim) -> None:
+        super().__init__()
+
+        self.bn_neck_v = nn.BatchNorm1d(dim)
+        self.bn_neck_i = nn.BatchNorm1d(dim)
+        nn.init.constant_(self.bn_neck_i.bias, 0)
+        nn.init.constant_(self.bn_neck_v.bias, 0)
+        self.bn_neck_v.bias.requires_grad_(False)
+        self.bn_neck_i.bias.requires_grad_(False)
+
+    def forward(self, x, nv, ni):
+        i = torch.range(0, nv+ni)
+        mask_v = i < nv
+        mask_i = i >= nv
+
+        x[mask_i] = self.bn_neck_i(x[mask_i])
+        x[mask_v] = self.bn_neck_v(x[mask_v])
+
+        return x
