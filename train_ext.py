@@ -6,6 +6,7 @@ import os
 
 import einops
 
+from Transformer import SimpleViT
 from part.criterion import CriterionAll, contrastive_loss, generate_edge_tensor
 
 parser = argparse.ArgumentParser(description='PyTorch Cross-Modality Training')
@@ -217,6 +218,10 @@ if args.method =='base':
 else:
     net = embed_net(n_class, no_local= 'on', gm_pool = 'on', arch=args.arch)
 net.to(device)
+
+vit = SimpleViT(token_size=7, num_classes=n_class, dim=2048)
+vit.to(device)
+
 cudnn.benchmark = True
 
 if len(args.resume) > 0:
@@ -259,6 +264,7 @@ if args.optim == 'sgd':
 
     optimizer = optim.SGD([
         {'params': base_params, 'lr': 0.1 * args.lr},
+        {'params': vit.parameters(), 'lr': 0.1 * args.lr},
         {'params': net.bottleneck.parameters(), 'lr': 0.5 * args.lr},
         {'params': net.classifier.parameters(), 'lr': 0.5 * args.lr}],
         weight_decay=5e-4, momentum=0.9, nesterov=True)
@@ -353,8 +359,9 @@ def train(epoch):
 
         attr_loss = torch.tensor(0)#sum([criterion_id(attr_score[i], attr_labels[:,i]) for i in range(9)] + [criterion_id(attr_score[-1], attr_labels[:,-1])])
 
+        feat_vit, out_vit = vit(feat.reshape(bs, -1, 2048))
         #
-        loss_id = criterion_id(out0, labels)
+        loss_id = criterion_id(out0, labels) + criterion_id(out_vit, labels)
         
         
         # loss kl
@@ -366,13 +373,13 @@ def train(epoch):
         # F = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)
         # cont_part2 = contrastive(F.transpose(0, 1))
 
-        loss_tri, batch_acc = criterion_tri(feat, labels)
+        loss_tri, batch_acc = criterion_tri(feat_vit, labels)
         # correct += (batch_acc / 2)
         _, predicted = out0.max(1)
         correct += (predicted.eq(labels).sum().item())
         
         # pdb.set_trace()
-        loss = loss_id + 0*loss_tri + loss_dp + part_loss + unsup_part + loss_id_parts #+ attr_loss
+        loss = loss_id + loss_tri + loss_dp + part_loss + unsup_part + loss_id_parts #+ attr_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -534,6 +541,7 @@ for epoch in range(start_epoch, 140 ):
             best_epoch = epoch
             state = {
                 'net': net.state_dict(),
+                'vit' : vit.state_dict(),
                 'cmc': cmc_att,
                 'mAP': mAP_att,
                 'mINP': mINP_att,
@@ -545,6 +553,7 @@ for epoch in range(start_epoch, 140 ):
         if dataset == 'sysu' and epoch >= 40 and epoch % args.save_epoch == 0:
             state = {
                 'net': net.state_dict(),
+                'vit': vit.state_dict(),
                 'cmc': cmc,
                 'mAP': mAP,
                 'epoch': epoch,
