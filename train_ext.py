@@ -309,12 +309,12 @@ def train(epoch):
         input2 = Variable(input2.cuda())
         
         
-        input10 = Variable(input10.cuda())
-        input11 = Variable(input11.cuda())
+        # input10 = Variable(input10.cuda())
+        input1 = Variable(input11.cuda())
 
         labels = Variable(labels.cuda())
         
-        input1 = torch.cat((input10, input11,),0)
+        # input1 = torch.cat((input10, input11,),0)
         input2 = Variable(input2.cuda())
 
         imgs = torch.cat((input1, input2,), 0)
@@ -327,6 +327,7 @@ def train(epoch):
 
         feat, out0, part, partsFeatX3, partsFeat, part_masks, partsScore, featsP, scoreP, attr_score = net(input1, input2)
 
+        bs = imgs.shape[0]
         #parts
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
@@ -342,6 +343,12 @@ def train(epoch):
         part_re.update(loss_id_parts.item(), 2 * input1.size(0))
         part_un.update(unsup_part.item(), 2 * input1.size(0))
 
+        loss_dp = 0
+        for i in range(part_masks.shape[1]):
+            for j in range(i + 1, part_masks.shape[1]):
+                loss_dp += ((((part_masks[:, i] - part_masks[:, j]) ** 2).sum(dim=1) / (18 * 9)) ** 0.5).sum()
+        loss_dp = - loss_dp / (bs * part_masks.shape[1] * (part_masks.shape[1] - 1) / 2)
+
         unsup_sum += unsup_part.item()
 
         attr_loss = torch.tensor(0)#sum([criterion_id(attr_score[i], attr_labels[:,i]) for i in range(9)] + [criterion_id(attr_score[-1], attr_labels[:,-1])])
@@ -352,9 +359,9 @@ def train(epoch):
         
         # loss kl
         n = out0.shape[0]//3
-        out1 = out0.narrow(0,0,n)
-        out2 = out0.narrow(0,2*n,n)
-        loss_kl = criterion_kl(out1, Variable(out2))
+        # out1 = out0.narrow(0,0,n)
+        # out2 = out0.narrow(0,2*n,n)
+        # loss_kl = criterion_kl(out1, Variable(out2))
         # kl_loss += criterion_kl(F.log_softmax(out2, dim = 1), F.softmax(Variable(out1), dim=1))                                           
         # F = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)
         # cont_part2 = contrastive(F.transpose(0, 1))
@@ -365,7 +372,7 @@ def train(epoch):
         correct += (predicted.eq(labels).sum().item())
         
         # pdb.set_trace()
-        loss = loss_id + loss_tri + args.kl * loss_kl + part_loss + unsup_part + loss_id_parts #+ attr_loss
+        loss = loss_id + loss_tri + loss_dp + part_loss + unsup_part + loss_id_parts #+ attr_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -374,7 +381,7 @@ def train(epoch):
         train_loss.update(loss.item(), 2 * input1.size(0))
         id_loss.update(loss_id.item(), 2 * input1.size(0))
         tri_loss.update(loss_tri.item(), 2 * input1.size(0))
-        kl_loss.update(loss_kl.item(), 2 * input1.size(0))
+        kl_loss.update(loss_dp.item(), 2 * input1.size(0))
         attr_m.update(attr_loss.item(), 2 * input1.size(0))
         total += labels.size(0)
 

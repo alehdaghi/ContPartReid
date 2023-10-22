@@ -183,6 +183,11 @@ class embed_net(nn.Module):
             [nn.Linear(self.pool_dim, 2, bias=False) for i in range(9)] + [nn.Linear(self.pool_dim, 4, bias=False)]
         )
 
+        # self.expand = nn.Sequential(
+        #     nn.Conv2d(2048, 4096, kernel_size=1, padding=0, dilation=1, bias=False)
+        # )
+        # self.condense = nn.Conv2d(4096, 2048, kernel_size=1, padding=0, dilation=1, bias=False)
+
     def forward(self, x1, x2, modal=0):
         sub1 = torch.ones(x1.shape[0]) == 0
         sub2 = torch.ones(x2.shape[0]) == 1
@@ -257,7 +262,7 @@ class embed_net(nn.Module):
         attr_score = [None] * 10
 
 
-        part, partsFeat = self.part(x.detach(), x1.detach(), x2.detach(), x3.detach())
+        part, partsFeat = self.part(x, x1, x2, x3)
         part_masks3 = F.softmax(part[0][0] + part[0][1])
         part_masks = F.softmax(F.avg_pool2d(part[0][0] + part[0][1], kernel_size=(4, 4)))
         maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:].detach(), x) / (h * w)
