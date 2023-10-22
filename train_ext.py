@@ -304,7 +304,7 @@ def train(epoch):
 
     for batch_idx, (input10, input11, input2, label1, label2, p_label10, p_label11, p_label2, attr1, attr2) in enumerate(trainloader):
 
-        labels = torch.cat((label1, label1, label2), 0)
+        labels = torch.cat((label1, label2), 0)
 
         input2 = Variable(input2.cuda())
         
@@ -319,8 +319,8 @@ def train(epoch):
 
         imgs = torch.cat((input1, input2,), 0)
 
-        part_labels = torch.cat((p_label10, p_label11, p_label2), 0).to(device).type(torch.cuda.LongTensor)
-        attr_labels = torch.cat((attr1, attr1, attr2), 0).to(device).type(torch.cuda.LongTensor)
+        part_labels = torch.cat((p_label10, p_label2), 0).to(device).type(torch.cuda.LongTensor)
+        attr_labels = torch.cat((attr1, attr2), 0).to(device).type(torch.cuda.LongTensor)
 
         data_time.update(time.time() - end)
 
@@ -336,8 +336,8 @@ def train(epoch):
         F = einops.rearrange(featsP, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)  # b m*p d
         F2 = einops.rearrange(partsFeat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)
         cont_part2 = sum([contrastive(f) for f in F2]) / args.batch_size
-        cont_part3 = contrastive(F.transpose(0, 1))
-        unsup_part = contrastive(partsFeatX3) + cont_part2 + cont_part3
+        # cont_part3 = contrastive(F.transpose(0, 1))
+        unsup_part = contrastive(partsFeatX3) + cont_part2 #+ cont_part3
         loss_id_parts = sum([criterion_id(ps, labels) / 6 for ps in partsScore]) #+ criterion_id(scoreP, labels)
         part_seg.update(part_loss.item(), 2 * input1.size(0))
         part_re.update(loss_id_parts.item(), 2 * input1.size(0))
@@ -372,7 +372,7 @@ def train(epoch):
         correct += (predicted.eq(labels).sum().item())
         
         # pdb.set_trace()
-        loss = loss_id + loss_tri + loss_dp + part_loss + unsup_part + loss_id_parts #+ attr_loss
+        loss = loss_id + 0*loss_tri + loss_dp + part_loss + unsup_part + loss_id_parts #+ attr_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()

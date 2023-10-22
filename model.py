@@ -321,8 +321,8 @@ class DualBNNeck(nn.Module):
     def forward(self, x, sub):
         mask_i = sub == 1
         mask_v = sub == 0
+        bx = x.clone()
+        bx[mask_i] = self.bn_neck_i(x[mask_i])
+        bx[mask_v] = self.bn_neck_v(x[mask_v])
 
-        x[mask_i] = self.bn_neck_i(x[mask_i])
-        x[mask_v] = self.bn_neck_v(x[mask_v])
-
-        return x
+        return bx
