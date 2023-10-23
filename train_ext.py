@@ -378,7 +378,7 @@ def train(epoch):
         loss_tri, batch_acc = criterion_tri(feat_vit, labels)
         # loss_tri, batch_acc = criterion_tri(feat_vit, labels)
         # correct += (batch_acc / 2)
-        _, predicted = out0.max(1)
+        _, predicted = out_vit.max(1)
         correct += (predicted.eq(labels).sum().item())
         
         # pdb.set_trace()
