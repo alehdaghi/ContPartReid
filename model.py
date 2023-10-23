@@ -265,12 +265,16 @@ class embed_net(nn.Module):
         part, partsFeat = self.part(x, x1, x2, x3)
         part_masks3 = F.softmax(part[0][0] + part[0][1])
         part_masks = F.softmax(F.avg_pool2d(part[0][0] + part[0][1], kernel_size=(4, 4)))
-        maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:].detach(), x) / (h * w)
+        #maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:].detach(), x) / (h * w)
+        maskedFeat2D = part_masks[:,1:].unsqueeze(2) * x.unsqueeze(1)
+        maskedFeatMean = maskedFeat2D.mean(dim=[-1,-2], keepdim=True)
+        maskedFeat = maskedFeatMean.squeeze(-1).squeeze(-1)
+        loss_mean = (F.mse_loss(maskedFeat2D, maskedFeatMean.detach()) + F.mse_loss(maskedFeat2D.detach(), maskedFeatMean)) * 10
         maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks3[:, 1:], partsFeat) / (16 * h * w)
         partsScore = []
         featsP = []  # maskedFeat.sum(dim=1)
         for i in range(0, self.part_num - 1):  # 0 is background!
-            feat = self.part_descriptor[i](maskedFeat[:, i])
+            # feat = self.part_descriptor[i](maskedFeat[:, i])
             partsScore.append(self.clsParts[i](maskedFeat[:, i]))
             featsP.append(maskedFeat[:, i])
 
@@ -301,7 +305,7 @@ class embed_net(nn.Module):
         feat = self.bottleneck(feat_b, sub)
         feat_g = feat[:, :2048]
         if self.training:
-            return feat, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP, attr_score
+            return feat, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP, attr_score, loss_mean
         else:
             return self.l2norm(feat_b), self.l2norm(feat), attr_score
 

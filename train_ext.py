@@ -331,7 +331,7 @@ def train(epoch):
         data_time.update(time.time() - end)
 
 
-        feat, out0, part, partsFeatX3, partsFeat, part_masks, partsScore, featsP, scoreP, attr_score = net(input1, input2)
+        feat, out0, part, partsFeatX3, partsFeat, part_masks, partsScore, featsP, scoreP, attr_score, loss_mean = net(input1, input2)
 
         bs = imgs.shape[0]
         #parts
@@ -380,7 +380,7 @@ def train(epoch):
         correct += (predicted.eq(labels).sum().item())
         
         # pdb.set_trace()
-        loss = loss_id + loss_dp + part_loss + unsup_part + loss_id_parts #+ 0*loss_tri #+ attr_loss
+        loss = loss_id + loss_dp + part_loss + unsup_part + loss_id_parts + loss_mean#+ 0*loss_tri #+ attr_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -390,7 +390,7 @@ def train(epoch):
         id_loss.update(loss_id.item(), 2 * input1.size(0))
         tri_loss.update(loss_tri.item(), 2 * input1.size(0))
         kl_loss.update(loss_dp.item(), 2 * input1.size(0))
-        attr_m.update(attr_loss.item(), 2 * input1.size(0))
+        attr_m.update(loss_mean.item(), 2 * input1.size(0))
         total += labels.size(0)
 
         # measure elapsed time
