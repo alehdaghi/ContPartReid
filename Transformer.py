@@ -60,7 +60,7 @@ class Transformer(nn.Module):
         return self.norm(x)
 
 class SimpleViT(nn.Module):
-    def __init__(self, *, token_size , num_classes, dim, depth=3, heads=8, mlp_dim=1024, dim_head = 128):
+    def __init__(self, *, token_size , num_classes, dim, depth=6, heads=8, mlp_dim=1024, dim_head = 128):
         super().__init__()
 
         # self.part_tokens = nn.Parameter(nn.init.kaiming_normal_(torch.empty(part_num, 2048)))

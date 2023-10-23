@@ -316,7 +316,7 @@ def train(epoch):
         
         
         # input10 = Variable(input10.cuda())
-        input1 = Variable(input11.cuda())
+        input1 = Variable(input10.cuda())
 
         labels = Variable(labels.cuda())
         
@@ -339,8 +339,8 @@ def train(epoch):
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]],
                                   [part_labels[good_part], edges[good_part]])  # + loss_reg
-        F = einops.rearrange(featsP, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)  # b m*p d
-        F2 = einops.rearrange(partsFeat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)
+        F = einops.rearrange(featsP, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=bs // input2.shape[0])  # b m*p d
+        F2 = einops.rearrange(partsFeat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=bs // input2.shape[0])
         cont_part2 = sum([contrastive(f) for f in F2]) / args.batch_size
         # cont_part3 = contrastive(F.transpose(0, 1))
         unsup_part = contrastive(partsFeatX3) + cont_part2 #+ cont_part3
@@ -359,9 +359,9 @@ def train(epoch):
 
         attr_loss = torch.tensor(0)#sum([criterion_id(attr_score[i], attr_labels[:,i]) for i in range(9)] + [criterion_id(attr_score[-1], attr_labels[:,-1])])
 
-        feat_vit, out_vit = vit(feat.reshape(bs, -1, 2048))
+        # feat_vit, out_vit = vit(feat.reshape(bs, -1, 2048))
         #
-        loss_id = criterion_id(out0, labels) + criterion_id(out_vit, labels)
+        loss_id = criterion_id(out0, labels) #+ criterion_id(out_vit, labels)
         
         
         # loss kl
@@ -373,13 +373,14 @@ def train(epoch):
         # F = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)
         # cont_part2 = contrastive(F.transpose(0, 1))
 
-        loss_tri, batch_acc = criterion_tri(feat_vit, labels)
+        loss_tri, batch_acc = criterion_tri(feat, labels)
+        # loss_tri, batch_acc = criterion_tri(feat_vit, labels)
         # correct += (batch_acc / 2)
         _, predicted = out0.max(1)
         correct += (predicted.eq(labels).sum().item())
         
         # pdb.set_trace()
-        loss = loss_id + loss_tri + loss_dp + part_loss + unsup_part + loss_id_parts #+ attr_loss
+        loss = loss_id + loss_dp + part_loss + unsup_part + loss_id_parts #+ 0*loss_tri #+ attr_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
