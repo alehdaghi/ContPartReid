@@ -307,7 +307,7 @@ class embed_net(nn.Module):
         if self.training:
             return feat, self.classifier(feat_g), part, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP, attr_score, loss_mean
         else:
-            return self.l2norm(feat_b), self.l2norm(feat), attr_score
+            return feat
 
 
 
