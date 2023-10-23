@@ -375,7 +375,8 @@ def train(epoch):
         # F = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)
         # cont_part2 = contrastive(F.transpose(0, 1))
 
-        loss_tri, batch_acc = criterion_tri(feat_vit, labels)
+        # loss_tri, batch_acc = criterion_tri(feat_vit, labels)
+        loss_tri, _, _ = cs_loss_fn(feat_vit, labels)
         # loss_tri, batch_acc = criterion_tri(feat_vit, labels)
         # correct += (batch_acc / 2)
         _, predicted = out_vit.max(1)
