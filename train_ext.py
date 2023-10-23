@@ -557,7 +557,7 @@ for epoch in range(start_epoch, 180 ):
             torch.save(state, checkpoint_path + suffix + '_best.t')
 
         # # save model
-        if dataset == 'sysu' and epoch >= 40 and epoch % args.save_epoch == 0:
+        if dataset == 'sysu' and epoch % args.save_epoch == 0:
             state = {
                 'net': net.state_dict(),
                 'vit': vit.state_dict(),
