@@ -79,7 +79,7 @@ from data_manager import *
 from eval_metrics import eval_sysu, eval_regdb
 from model import embed_net
 from utils import *
-from loss import OriTripletLoss, TripletLoss_WRT, KLDivLoss, TripletLoss_ADP, CSLoss
+from loss import OriTripletLoss, TripletLoss_WRT, KLDivLoss, TripletLoss_ADP, CSLoss, TripletLoss
 from tensorboardX import SummaryWriter
 from ChannelAug import ChannelAdap, ChannelAdapGray, ChannelRandomErasing
 
@@ -219,7 +219,7 @@ else:
     net = embed_net(n_class, no_local= 'on', gm_pool = 'on', arch=args.arch)
 net.to(device)
 
-vit = SimpleViT(token_size=7, num_classes=n_class, dim=2048)
+vit = SimpleViT(token_size=7, num_classes=n_class, dim=2048, depth=3)
 vit.to(device)
 
 cudnn.benchmark = True
@@ -257,6 +257,8 @@ criterion_kl = KLDivLoss()
 criterion_id.to(device)
 criterion_tri.to(device)
 criterion_kl.to(device)
+
+cross_triplet_creiteron = TripletLoss(0.3, 'euclidean')
 
 if args.optim == 'sgd':
     ignored_params = list(map(id, net.bottleneck.parameters())) \
@@ -341,7 +343,7 @@ def train(epoch):
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]],
                                   [part_labels[good_part], edges[good_part]])  # + loss_reg
-        F = einops.rearrange(featsP, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=bs // input2.shape[0])  # b m*p d
+
         F2 = einops.rearrange(partsFeat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=bs // input2.shape[0])
         cont_part2 = sum([contrastive(f) for f in F2]) / args.batch_size
         # cont_part3 = contrastive(F.transpose(0, 1))
@@ -361,9 +363,9 @@ def train(epoch):
 
         attr_loss = torch.tensor(0)#sum([criterion_id(attr_score[i], attr_labels[:,i]) for i in range(9)] + [criterion_id(attr_score[-1], attr_labels[:,-1])])
 
-        feat_vit, out_vit = vit(feat.reshape(bs, -1, 2048))
+        # feat_vit, out_vit = vit(feat.reshape(bs, -1, 2048))
         #
-        loss_id = criterion_id(out0, labels) + criterion_id(out_vit, labels)
+
         
         
         # loss kl
@@ -376,14 +378,35 @@ def train(epoch):
         # cont_part2 = contrastive(F.transpose(0, 1))
 
         # loss_tri, batch_acc = criterion_tri(feat_vit, labels)
-        loss_tri, _, _ = cs_loss_fn(feat_vit, labels)
+        # loss_tri, _, _ = cs_loss_fn(feat, labels)
+
+        feat_final, out_vit = vit(feat.reshape(bs, -1, 2048))
+        F = einops.rearrange(feat_final, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=bs // input2.shape[0])  # b m*p d
+
+
+        color_feat, thermal_feat = torch.split(feat_final, input2.shape[0])
+        color_label, thermal_label = torch.split(labels, input2.shape[0])
+        loss_tri_color = cross_triplet_creiteron(color_feat, thermal_feat, thermal_feat,
+                                                 color_label, thermal_label, thermal_label)
+        loss_tri_thermal = cross_triplet_creiteron(thermal_feat, color_feat, color_feat,
+                                                   thermal_label, color_label, color_label)
+
+        loss_tri = (loss_tri_color + loss_tri_thermal) / 2 + contrastive(F.transpose(0, 1))
+
+        loss_id = criterion_id(out0, labels) + criterion_id(out_vit, labels)
+
         # loss_tri, batch_acc = criterion_tri(feat_vit, labels)
         # correct += (batch_acc / 2)
         _, predicted = out_vit.max(1)
         correct += (predicted.eq(labels).sum().item())
         
         # pdb.set_trace()
-        loss = loss_id + loss_dp + part_loss + unsup_part + loss_id_parts + loss_mean+ loss_tri #+ attr_loss
+        loss = loss_id + loss_dp + part_loss + unsup_part + loss_id_parts +loss_mean+ loss_tri #+ attr_loss
+        if torch.isnan(loss):
+            print(input1.sum(), input2.sum())
+            print(feat)
+            print(loss_id , loss_dp , part_loss , unsup_part , loss_id_parts ,loss_mean, loss_tri)
+            exit(1)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -462,9 +485,9 @@ def test(epoch):
             batch_num = input.size(0)
             input = Variable(input.cuda())
             feat = net(input, input, test_mode[0])
-            feat_vit, out_vit = vit(feat.reshape(input.shape[0], -1, 2048))
-            feat_vit = net.l2norm(feat_vit)
-            gall_feat[ptr:ptr + batch_num, :] = feat_vit.detach().cpu().numpy()
+            feat, out_vit = vit(feat.reshape(input.shape[0], -1, 2048))
+            feat = net.l2norm(feat)
+            gall_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             # gall_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
             # gall_attr[ptr:ptr + batch_num, :] = torch.stack([out.max(1)[1] for out in attr_score]).t().cpu().numpy()
             ptr = ptr + batch_num
@@ -482,10 +505,11 @@ def test(epoch):
         for batch_idx, (input, label) in enumerate(query_loader):
             batch_num = input.size(0)
             input = Variable(input.cuda())
-            feat= net(input, input, test_mode[1])
-            feat_vit, out_vit = vit(feat.reshape(input.shape[0], -1, 2048))
-            feat_vit = net.l2norm(feat_vit)
-            query_feat[ptr:ptr + batch_num, :] = feat_vit.detach().cpu().numpy()
+            feat = net(input, input, test_mode[1])
+            feat, out_vit = vit(feat.reshape(input.shape[0], -1, 2048))
+            # feat_vit = net.l2norm(feat_vit)
+            feat = net.l2norm(feat)
+            query_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             # query_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
             # query_attr[ptr:ptr + batch_num, :] = torch.stack([out.max(1)[1] for out in attr_score]).t().cpu().numpy()
             ptr = ptr + batch_num

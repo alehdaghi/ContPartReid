@@ -28,7 +28,7 @@ class ChannelAdap(object):
         # if random.uniform(0, 1) > self.probability:
             # return img
 
-        idx = random.randint(0, 3)
+        idx = random.randint(0, 7)
         
         if idx ==0:
             # random select R Channel
@@ -42,6 +42,13 @@ class ChannelAdap(object):
             # random select G Channel
             img[0, :,:] = img[2,:,:]
             img[1, :,:] = img[2,:,:]
+        elif idx == 3:
+            a, b, c = random.random(), random.random(), random.random()
+            s = a + b + c
+            a, b, c = a/s, b/s, c/s
+            img[0, :, :] = a * img[0, :, :] + b * img[1, :, :] + c * img[2, :, :]
+            img[1, :, :] = a * img[0, :, :] + b * img[1, :, :] + c * img[2, :, :]
+            img[2, :, :] = a * img[0, :, :] + b * img[1, :, :] + c * img[2, :, :]
         else:
             img = img
 

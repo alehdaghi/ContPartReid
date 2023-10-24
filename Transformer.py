@@ -4,6 +4,9 @@ from torch import nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
 
+from model import weights_init_classifier, weights_init_kaiming
+
+
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim):
         super().__init__()
@@ -60,7 +63,7 @@ class Transformer(nn.Module):
         return self.norm(x)
 
 class SimpleViT(nn.Module):
-    def __init__(self, *, token_size , num_classes, dim, depth=6, heads=8, mlp_dim=1024, dim_head = 128):
+    def __init__(self, *, token_size , num_classes, dim, depth=6, heads=1, mlp_dim=1024, dim_head = 1024):
         super().__init__()
 
         # self.part_tokens = nn.Parameter(nn.init.kaiming_normal_(torch.empty(part_num, 2048)))
@@ -71,7 +74,12 @@ class SimpleViT(nn.Module):
         self.pool = "mean"
         self.to_latent = nn.Identity()
 
-        self.linear_head = nn.Linear(token_size * dim, num_classes)
+        self.bottleneck = nn.BatchNorm1d(token_size * dim)
+        self.bottleneck.bias.requires_grad_(False)  # no shift
+        self.bottleneck.apply(weights_init_kaiming)
+
+        self.linear_head = nn.Linear(token_size * dim, num_classes, bias=False)
+        self.linear_head.apply(weights_init_classifier)
 
     def forward(self, feats):
 
@@ -82,5 +90,5 @@ class SimpleViT(nn.Module):
         x = self.transformer(x)
         x = x.reshape(x.shape[0], -1)
 
-        # x = self.to_latent(x)
+        x = self.bottleneck(x)
         return x, self.linear_head(x)

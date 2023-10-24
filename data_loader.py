@@ -70,7 +70,7 @@ class SYSUData(data.Dataset):
         self.tIndex = thermalIndex
 
         self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        self.erase = ChannelRandomErasing(probability=0.0)
+        self.erase = ChannelRandomErasing(probability=0.5)
         self.exchange = ChannelExchange(gray=2)
         self.adap = ChannelAdapGray(probability=0.5)
         # self.transform_thermal = transforms.Compose( [
@@ -143,6 +143,7 @@ class SYSUData(data.Dataset):
             img = TF.hflip(img)
             part = TF.hflip(part)
         img = TF.to_tensor(img)
+        img = self.adap(img)
         return self.normalize(img), part
 
     def transform_thermal(self, img, part):
@@ -154,16 +155,16 @@ class SYSUData(data.Dataset):
             x1, y1, h, w = param
             part[x1:x1 + h, y1:y1 + w] = 255
 
-        return self.adap(img), part
+        return img, part
 
     def transform_color(self, img, part):
         # ChannelRandomErasing(probability=0.5)
 
         img, part = self.common(img, part)
-        # img, param = self.erase(img)
-        # if param is not None:
-        #     x1, y1, h, w = param
-        #     part[x1:x1 + h, y1:y1 + w] = 255
+        img, param = self.erase(img)
+        if param is not None:
+            x1, y1, h, w = param
+            part[x1:x1 + h, y1:y1 + w] = 255
 
         return img, part
 
