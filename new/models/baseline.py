@@ -136,7 +136,7 @@ class Baseline(nn.Module):
     def train_forward(self, maskedFeat, global_feat, labels, loss_dp, sub, loss_un, loss_pid, **kwargs):
         metric = {}
         epoch = kwargs.get('epoch')
-        t = max(epoch // 10, self.part_num)
+        t = min(epoch // 10, self.part_num)
 
         global_feat = global_feat.mean(dim=(2, 3))
         part_feat = self.vit(maskedFeat)
