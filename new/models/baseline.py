@@ -136,16 +136,12 @@ class Baseline(nn.Module):
     def train_forward(self, maskedFeat, global_feat, labels, loss_dp, sub, loss_un, loss_pid, **kwargs):
         metric = {}
         epoch = kwargs.get('epoch')
-        t = 0
-        if epoch > 60:
-            t = 2
-        elif epoch > 20:
-            t = 1
+        t = max(epoch // 10, self.part_num)
 
         global_feat = global_feat.mean(dim=(2, 3))
         part_feat = self.vit(maskedFeat)
         feat = torch.cat([part_feat, global_feat], dim=1)
-        if t == 2:
+        if t >= self.part_num:
             loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
         elif t == 0:
             loss_cs1, _, _ = self.cs_loss_fn(feat[sub==0].float(), labels[sub == 0], self.k_size // 2)
@@ -218,12 +214,12 @@ class Baseline(nn.Module):
         if t == 0:
             f1 = v
             f2 = i
-        elif t== 1:
+        elif t < self.part_num:
             f1 = v.clone()
             f2 = i.clone()
             for j in range(v.shape[0]):
-                index1 = np.random.choice(feats.shape[1],feats.shape[1]//2, False)
-                index2 = np.random.choice(feats.shape[1],feats.shape[1]//2, False)
+                index1 = np.random.choice(feats.shape[1], t, False)
+                index2 = np.random.choice(feats.shape[1], t, False)
                 f1[j][index1] = i[j][index1]
                 f2[j][index2] = v[j][index2]
         else:
