@@ -27,7 +27,8 @@ def create_train_engine(model, optimizer, non_blocking=False):
         with torch.autocast('cuda', torch.float16):
             loss, metric = model(data, labels,
                                 cam_ids=cam_ids,
-                                epoch=epoch)
+                                epoch=epoch,
+                                iteration = engine.state.iteration)
 
         scaler.scale(loss).backward()
         scaler.step(optimizer)

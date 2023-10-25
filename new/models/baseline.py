@@ -73,6 +73,8 @@ class Baseline(nn.Module):
         self.vit = SimpleViT(token_size=self.part_num, num_classes=num_classes, dim=2048, depth=6)
     
     def forward(self, inputs, labels=None, **kwargs):
+        iter = kwargs.get('iteration')
+        epoch = kwargs.get('epoch')
         cam_ids = kwargs.get('cam_ids')
         sub = (cam_ids == 3) + (cam_ids == 6)
         # CNN
@@ -86,10 +88,12 @@ class Baseline(nn.Module):
 
         attn = F.avg_pool2d(part_masks3, kernel_size=(4, 4))
         maskedFeat = torch.einsum('brhw, bchw -> brc', attn, global_feat) / (h * w)
+
         # part_feat, attn = self.attn_pool(global_feat)
-        part_feat = self.vit(maskedFeat)
-        global_feat = global_feat.mean(dim=(2, 3))
-        feats = torch.cat([part_feat, global_feat], dim=1)
+
+
+
+
 
         if self.training:
             masks = attn.view(b, self.part_num, w*h)
@@ -111,15 +115,53 @@ class Baseline(nn.Module):
             loss_un = contrastive_loss(maskedFeatX3) + cont_part2
 
         if not self.training:
+            part_feat = self.vit(maskedFeat)
+            global_feat = global_feat.mean(dim=(2, 3))
+            feats = torch.cat([part_feat, global_feat], dim=1)
             feats = self.bn_neck(feats, sub)
             return feats
         else:
-            return self.train_forward(feats, labels, loss_dp, sub, loss_un, **kwargs)
+            return self.train_forward(maskedFeat, global_feat, labels, loss_dp, sub, loss_un, **kwargs)
 
-    def train_forward(self, feat, labels, loss_dp, sub, loss_un, **kwargs):
+    def train_forward(self, maskedFeat, global_feat, labels, loss_dp, sub, loss_un, **kwargs):
         metric = {}
+        epoch = kwargs.get('epoch')
+        t = 0
+        if epoch > 60:
+            t = 2
+        elif epoch > 20:
+            t = 1
 
-        loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels)
+        global_feat = global_feat.mean(dim=(2, 3))
+        part_feat = self.vit(maskedFeat)
+        feat = torch.cat([part_feat, global_feat], dim=1)
+        if t == 2:
+            loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
+        elif t == 0:
+            loss_cs1, _, _ = self.cs_loss_fn(feat[sub==0].float(), labels[sub == 0], self.k_size // 2)
+            loss_cs2, _, _ = self.cs_loss_fn(feat[sub==1].float(), labels[sub == 1], self.k_size // 2)
+            loss_cs = loss_cs1 + loss_cs2
+        else:
+            visP, infP = self.step(t, maskedFeat, sub)
+            visG, infG = global_feat[sub == 0], global_feat[sub == 1]
+            visP = self.vit(visP)
+            infP = self.vit(infP)
+            visFused = torch.cat([visP, visG], dim=1)
+            infFused = torch.cat([infP, infG], dim=1)
+
+
+            visPure, infPure = feat[sub == 0], feat[sub == 1]
+
+            visFeat = torch.cat((visPure, visFused), dim=0)
+            infFeat = torch.cat((infPure, infFused), dim=0)
+            visFeat = einops.rearrange(visFeat, '(m p k) ... -> (p k m) ...', k=self.k_size // 2, m = 2)
+            infFeat = einops.rearrange(infFeat, '(m p k) ... -> (p k m) ...', k=self.k_size // 2, m = 2)
+
+            loss_cs1, _, _ = self.cs_loss_fn(visFeat.float(), labels, self.k_size)
+            loss_cs2, _, _ = self.cs_loss_fn(infFeat.float(), labels, self.k_size)
+            loss_cs = loss_cs1 + loss_cs2
+
+
         feat = self.bn_neck(feat, sub)
     
         logits = self.classifier(feat)
@@ -157,3 +199,22 @@ class Baseline(nn.Module):
         loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_un
 
         return loss, metric
+
+    def step(self, t, feats, sub):
+        v = feats[sub==0]
+        i = feats[sub==1]
+        if t == 0:
+            f1 = v
+            f2 = i
+        elif t== 1:
+            f1 = v.clone()
+            f2 = i.clone()
+            for j in range(v.shape[0]):
+                index1 = np.random.choice(feats.shape[1],feats.shape[1]//2, False)
+                index2 = np.random.choice(feats.shape[1],feats.shape[1]//2, False)
+                f1[j][index1] = i[j][index1]
+                f2[j][index2] = v[j][index2]
+        else:
+            f1 = feats[:feats.shape[0]]
+            f2 = feats[feats.shape[0]:]
+        return f1 , f2
