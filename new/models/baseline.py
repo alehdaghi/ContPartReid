@@ -205,6 +205,7 @@ class Baseline(nn.Module):
         metric.update({'dp': loss_dp.data})
         metric.update({'un': loss_un.data})
         metric.update({'pid': loss_pid.data})
+        metric.update({'t': t})
 
 
         loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_un + loss_pid
