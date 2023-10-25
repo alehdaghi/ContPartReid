@@ -69,6 +69,9 @@ class Baseline(nn.Module):
         self.ce_loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
         self.cs_loss_fn = CSLoss(k_size=self.k_size, margin1=self.margin1, margin2=self.margin2)
 
+        self.clsParts = nn.ModuleList(
+            [nn.Sequential(nn.Linear(2048, 1024, bias=False), nn.BatchNorm1d(1024), nn.Linear(1024, num_classes, bias=False)) for i in range(self.part_num)])
+
         self.part = PartModel(self.part_num)
         self.vit = SimpleViT(token_size=self.part_num, num_classes=num_classes, dim=2048, depth=6)
     
@@ -114,6 +117,13 @@ class Baseline(nn.Module):
 
             loss_un = contrastive_loss(maskedFeatX3) + cont_part2
 
+            partsScore = []
+            for i in range(0, self.part_num):  # 0 is background!
+                # feat = self.part_descriptor[i](maskedFeat[:, i])
+                partsScore.append(self.clsParts[i](maskedFeat[:, i]))
+
+            loss_pid = sum([self.ce_loss_fn(ps, labels) / 6 for ps in partsScore])
+
         if not self.training:
             part_feat = self.vit(maskedFeat)
             global_feat = global_feat.mean(dim=(2, 3))
@@ -121,9 +131,9 @@ class Baseline(nn.Module):
             feats = self.bn_neck(feats, sub)
             return feats
         else:
-            return self.train_forward(maskedFeat, global_feat, labels, loss_dp, sub, loss_un, **kwargs)
+            return self.train_forward(maskedFeat, global_feat, labels, loss_dp, sub, loss_un, loss_pid, **kwargs)
 
-    def train_forward(self, maskedFeat, global_feat, labels, loss_dp, sub, loss_un, **kwargs):
+    def train_forward(self, maskedFeat, global_feat, labels, loss_dp, sub, loss_un, loss_pid, **kwargs):
         metric = {}
         epoch = kwargs.get('epoch')
         t = 0
@@ -194,9 +204,10 @@ class Baseline(nn.Module):
         metric.update({'cs': loss_cs.data})
         metric.update({'dp': loss_dp.data})
         metric.update({'un': loss_un.data})
+        metric.update({'un': loss_pid.data})
 
 
-        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_un
+        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_un + loss_pid
 
         return loss, metric
 
