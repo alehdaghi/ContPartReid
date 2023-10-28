@@ -136,10 +136,12 @@ class Baseline(nn.Module):
     def train_forward(self, maskedFeat, global_feat, labels, loss_dp, sub, loss_un, loss_pid, **kwargs):
         metric = {}
         epoch = kwargs.get('epoch')
-        t = min(epoch // 10, self.part_num)
+        t = 100#min(epoch // 10, self.part_num)
 
         global_feat = global_feat.mean(dim=(2, 3))
         part_feat = self.vit(maskedFeat)
+        F3 = einops.rearrange(part_feat.reshape(labels.shape[0], self.part_num, -1), '(m k) p ... -> k (m p) ...', k=self.k_size)
+        loss_un = loss_un + contrastive_loss(F3)
         feat = torch.cat([part_feat, global_feat], dim=1)
         if t >= self.part_num:
             loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
