@@ -73,7 +73,7 @@ class Baseline(nn.Module):
             [nn.Sequential(nn.Linear(2048, 1024, bias=False), nn.BatchNorm1d(1024), nn.Linear(1024, num_classes, bias=False)) for i in range(self.part_num)])
 
         self.part = PartModel(self.part_num)
-        self.vit = SimpleViT(token_size=self.part_num, num_classes=num_classes, dim=2048, depth=6)
+        self.vit = SimpleViT(token_size=self.part_num+1, num_classes=num_classes, dim=2048, depth=6)
     
     def forward(self, inputs, labels=None, **kwargs):
         iter = kwargs.get('iteration')
@@ -125,9 +125,10 @@ class Baseline(nn.Module):
             loss_pid = sum([self.ce_loss_fn(ps, labels) / 6 for ps in partsScore])
 
         if not self.training:
-            part_feat = self.vit(maskedFeat)
-            global_feat = global_feat.mean(dim=(2, 3))
-            feats = torch.cat([part_feat, global_feat], dim=1)
+            # part_feat = self.vit(maskedFeat)
+            # global_feat = global_feat.mean(dim=(2, 3))
+            feats = self.vit(torch.hstack([maskedFeat, global_feat.unsqueeze(1)]))
+            # feats = torch.cat([part_feat, global_feat], dim=1)
             feats = self.bn_neck(feats, sub)
             return feats
         else:
@@ -139,10 +140,10 @@ class Baseline(nn.Module):
         t = 100#min(epoch // 10, self.part_num)
 
         global_feat = global_feat.mean(dim=(2, 3))
-        part_feat = self.vit(maskedFeat)
+        part_feat = self.vit(torch.hstack([maskedFeat, global_feat.unsqueeze(1)]))
         F3 = einops.rearrange(part_feat.reshape(labels.shape[0], self.part_num, -1), '(m k) p ... -> k (m p) ...', k=self.k_size)
         loss_un = loss_un + contrastive_loss(F3, t=0.2)
-        feat = torch.cat([part_feat, global_feat], dim=1)
+        feat = part_feat#torch.cat([part_feat, global_feat], dim=1)
         if t >= self.part_num:
             loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
         elif t == 0:
