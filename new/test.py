@@ -32,28 +32,27 @@ def train(cfg):
     logger.info(pprint.pformat(cfg))
 
     # training data loader
-    train_loader = get_train_loader(dataset=cfg.dataset,
-                                    root=cfg.data_root,
-                                    sample_method=cfg.sample_method,
-                                    batch_size=cfg.batch_size,
-                                    p_size=cfg.p_size,
-                                    k_size=cfg.k_size,
-                                    random_flip=cfg.random_flip,
-                                    random_crop=cfg.random_crop,
-                                    random_erase=cfg.random_erase,
-                                    color_jitter=cfg.color_jitter,
-                                    padding=cfg.padding,
-                                    image_size=cfg.image_size,
-                                    num_workers=8)
+    # train_loader = get_train_loader(dataset=cfg.dataset,
+    #                                 root=cfg.data_root,
+    #                                 sample_method=cfg.sample_method,
+    #                                 batch_size=cfg.batch_size,
+    #                                 p_size=cfg.p_size,
+    #                                 k_size=cfg.k_size,
+    #                                 random_flip=cfg.random_flip,
+    #                                 random_crop=cfg.random_crop,
+    #                                 random_erase=cfg.random_erase,
+    #                                 color_jitter=cfg.color_jitter,
+    #                                 padding=cfg.padding,
+    #                                 image_size=cfg.image_size,
+    #                                 num_workers=8)
 
     # evaluation data loader
     gallery_loader, query_loader = None, None
-    if cfg.eval_interval > 0:
-        gallery_loader, query_loader = get_test_loader(dataset=cfg.dataset,
-                                                       root=cfg.data_root,
-                                                       batch_size=32,
-                                                       image_size=cfg.image_size,
-                                                       num_workers=4)
+    gallery_loader, query_loader = get_test_loader(dataset=cfg.dataset,
+                                                   root=cfg.data_root,
+                                                   batch_size=32,
+                                                   image_size=cfg.image_size,
+                                                   num_workers=4)
 
     # model
     model = Baseline(num_classes=cfg.num_id,
@@ -97,7 +96,7 @@ def train(cfg):
     # ignored_params = list(map(id, model.local_conv_list.parameters())) \
     #                     + list(map(id, model.fc_list.parameters())) \
     #                     + list(map(id, model.attention_pool.parameters()))
-        
+
     # base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
 
     # optimizer = optim.SGD([
@@ -118,7 +117,7 @@ def train(cfg):
 
     def step_lr_with_warmup(epoch):
         if epoch < 10:
-            return (epoch + 1) / 10 
+            return (epoch + 1) / 10
         else:
             if epoch < cfg.lr_step[0]:
                 return 1
@@ -126,7 +125,7 @@ def train(cfg):
                 return 0.1
             else:
                 return 0.01
-                
+
     lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=step_lr_with_warmup)
 
     if cfg.resume:
@@ -151,7 +150,8 @@ def train(cfg):
                          query_loader=query_loader)
 
     # training
-    engine.run(train_loader, max_epochs=cfg.num_epoch)
+    # engine.run(train_loader, max_epochs=cfg.num_epoch)
+    engine.train_completed(engine)
 
 
 if __name__ == '__main__':
@@ -174,6 +174,9 @@ if __name__ == '__main__':
     parser.add_argument("--dp_w", type=float, default=0.5)
     parser.add_argument("--cs_w", type=float, default=1)
     parser.add_argument("--resume", "-r", type=str, default='')
+    parser.add_argument("--p_size", type=int, default=10)
+    parser.add_argument("--k_size", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
 
     # set random seed

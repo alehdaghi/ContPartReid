@@ -207,4 +207,5 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
             kv_metric.reset()
             timer.reset()
 
+    trainer.train_completed = train_completed
     return trainer
