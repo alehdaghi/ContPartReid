@@ -74,6 +74,10 @@ class Baseline(nn.Module):
 
         self.part = PartModel(self.part_num)
         self.vit = SimpleViT(token_size=self.part_num, num_classes=num_classes, dim=2048, depth=6)
+
+        self.bn_neck_part = DualBNNeck(self.base_dim + self.dim * self.part_num)
+        self.classifier_part = nn.Linear(self.dim * self.part_num, num_classes, bias=False)
+
     
     def forward(self, inputs, labels=None, **kwargs):
         iter = kwargs.get('iteration')
@@ -161,6 +165,7 @@ class Baseline(nn.Module):
             infFeat = torch.cat((infPure, infFused), dim=0)
             visFeat = einops.rearrange(visFeat, '(m p k) ... -> (p k m) ...', k=self.k_size // 2, m = 2)
             infFeat = einops.rearrange(infFeat, '(m p k) ... -> (p k m) ...', k=self.k_size // 2, m = 2)
+            visFeat = self.bn_neck(visFeat)
 
             loss_cs1, _, _ = self.cs_loss_fn(visFeat.float(), labels, self.k_size)
             loss_cs2, _, _ = self.cs_loss_fn(infFeat.float(), labels, self.k_size)
@@ -169,9 +174,10 @@ class Baseline(nn.Module):
             logitsI = self.classifier(infFeat)
             loss_id = self.ce_loss_fn(logitsV.float(), labels) + self.ce_loss_fn(logitsI.float(), labels)
 
-        F3 = einops.rearrange(part_feat, '(p k) ... -> k p ...',
-                              k=self.k_size)
-        loss_un = loss_un + 0.5 * contrastive_loss(F3, t=0.6)
+        F3 = einops.rearrange(part_feat, '(p k) ... -> k p ...',  k=self.k_size)
+
+
+        loss_un = loss_un  #0.5 * contrastive_loss(F3, t=0.6)
 
         feat = self.bn_neck(feat, sub)
     
@@ -199,6 +205,10 @@ class Baseline(nn.Module):
             logits_i_ = self.visible_classifier_(feat[sub == 1])
             logits_m_ = torch.cat([logits_v_, logits_i_], 0).float()
 
+
+        loss_p_reid = self.cs_loss_fn(feat[:, :-2048].float(), labels, self.k_size)[0] +\
+                      self.ce_loss_fn(self.classifier_part(feat[:, :-2048]).float(), labels)
+
         loss_id += self.ce_loss_fn(logits_m, logits_m_.softmax(dim=1)) 
 
         metric.update({'id': loss_id.data})
@@ -206,10 +216,11 @@ class Baseline(nn.Module):
         metric.update({'dp': loss_dp.data})
         metric.update({'un': loss_un.data})
         metric.update({'pid': loss_pid.data})
+        metric.update({'pre': loss_p_reid.data})
         metric.update({'t': t})
 
 
-        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_un + loss_pid
+        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_un + loss_pid + loss_p_reid
 
         return loss, metric
 
