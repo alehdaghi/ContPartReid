@@ -169,7 +169,7 @@ class Baseline(nn.Module):
             logitsI = self.classifier(infFeat)
             loss_id = self.ce_loss_fn(logitsV.float(), labels) + self.ce_loss_fn(logitsI.float(), labels)
 
-        F3 = einops.rearrange(part_feat.reshape(labels.shape[0], self.part_num, -1), '(m k) p ... -> k (m p) ...',
+        F3 = einops.rearrange(part_feat, '(p k) ... -> p k ...',
                               k=self.k_size)
         loss_un = loss_un + 0.5 * contrastive_loss(F3, t=0.6)
 
