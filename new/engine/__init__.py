@@ -75,6 +75,7 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
             perm = sio.loadmat(os.path.join(dataset_cfg.sysu.data_root, 'exp', 'rand_perm_cam.mat'))[
                 'rand_perm_cam']
             logging.info('no aim:')
+            eval_sysu(q_feats[:, :-2048], q_ids, q_cams, g_feats[:, :-2048], g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False)
             eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False)
             eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=10, aim=False)
             eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='indoor', num_shots=1, aim=False)

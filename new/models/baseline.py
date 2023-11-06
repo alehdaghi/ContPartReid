@@ -73,7 +73,7 @@ class Baseline(nn.Module):
             [nn.Sequential(nn.Linear(2048, 1024, bias=False), nn.BatchNorm1d(1024), nn.Linear(1024, num_classes, bias=False)) for i in range(self.part_num)])
 
         self.part = PartModel(self.part_num)
-        self.vit = SimpleViT(token_size=self.part_num+1, num_classes=num_classes, dim=2048, depth=6)
+        self.vit = SimpleViT(token_size=self.part_num, num_classes=num_classes, dim=2048, depth=6)
     
     def forward(self, inputs, labels=None, **kwargs):
         iter = kwargs.get('iteration')
@@ -95,9 +95,6 @@ class Baseline(nn.Module):
         # part_feat, attn = self.attn_pool(global_feat)
 
 
-
-
-
         if self.training:
             masks = attn.view(b, self.part_num, w*h)
             if self.dp == "cos":
@@ -116,7 +113,6 @@ class Baseline(nn.Module):
             cont_part2 = sum([contrastive_loss(f) for f in F2]) / F2.shape[0]
 
             loss_un = contrastive_loss(maskedFeatX3) + cont_part2
-
             partsScore = []
             for i in range(0, self.part_num):  # 0 is background!
                 # feat = self.part_descriptor[i](maskedFeat[:, i])
@@ -124,11 +120,12 @@ class Baseline(nn.Module):
 
             loss_pid = sum([self.ce_loss_fn(ps, labels) / 6 for ps in partsScore])
 
+
         if not self.training:
-            # part_feat = self.vit(maskedFeat)
-            # global_feat = global_feat.mean(dim=(2, 3))
-            feats = self.vit(torch.hstack([maskedFeat, global_feat.unsqueeze(1)]))
-            # feats = torch.cat([part_feat, global_feat], dim=1)
+            part_feat = self.vit(maskedFeat)
+            global_feat = global_feat.mean(dim=(2, 3))
+            # feats = self.vit(torch.hstack([maskedFeat, global_feat.unsqueeze(1)]))
+            feats = torch.cat([part_feat, global_feat], dim=1)
             feats = self.bn_neck(feats, sub)
             return feats
         else:
@@ -137,13 +134,12 @@ class Baseline(nn.Module):
     def train_forward(self, maskedFeat, global_feat, labels, loss_dp, sub, loss_un, loss_pid, **kwargs):
         metric = {}
         epoch = kwargs.get('epoch')
-        t = 100#min(epoch // 10, self.part_num)
+        t = min(epoch // 10, self.part_num)
 
         global_feat = global_feat.mean(dim=(2, 3))
-        part_feat = self.vit(torch.hstack([maskedFeat, global_feat.unsqueeze(1)]))
-        F3 = einops.rearrange(part_feat.reshape(labels.shape[0], self.part_num, -1), '(m k) p ... -> k (m p) ...', k=self.k_size)
-        loss_un = loss_un + contrastive_loss(F3, t=0.2)
-        feat = part_feat#torch.cat([part_feat, global_feat], dim=1)
+        part_feat = self.vit(maskedFeat)
+        feat = torch.cat([part_feat, global_feat], dim=1)
+        loss_id = 0
         if t >= self.part_num:
             loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
         elif t == 0:
@@ -151,7 +147,7 @@ class Baseline(nn.Module):
             loss_cs2, _, _ = self.cs_loss_fn(feat[sub==1].float(), labels[sub == 1], self.k_size // 2)
             loss_cs = loss_cs1 + loss_cs2
         else:
-            visP, infP = self.step(t, maskedFeat, sub)
+            visP, infP = self.step(t, maskedFeat, sub, labels)
             visG, infG = global_feat[sub == 0], global_feat[sub == 1]
             visP = self.vit(visP)
             infP = self.vit(infP)
@@ -169,12 +165,18 @@ class Baseline(nn.Module):
             loss_cs1, _, _ = self.cs_loss_fn(visFeat.float(), labels, self.k_size)
             loss_cs2, _, _ = self.cs_loss_fn(infFeat.float(), labels, self.k_size)
             loss_cs = loss_cs1 + loss_cs2
+            logitsV = self.classifier(visFeat)
+            logitsI = self.classifier(infFeat)
+            loss_id = self.ce_loss_fn(logitsV.float(), labels) + self.ce_loss_fn(logitsI.float(), labels)
 
+        F3 = einops.rearrange(part_feat.reshape(labels.shape[0], self.part_num, -1), '(m k) p ... -> k (m p) ...',
+                              k=self.k_size)
+        loss_un = loss_un + 0.5 * contrastive_loss(F3, t=0.6)
 
         feat = self.bn_neck(feat, sub)
     
         logits = self.classifier(feat)
-        loss_id = self.ce_loss_fn(logits.float(), labels)
+        loss_id = 0.5*loss_id + self.ce_loss_fn(logits.float(), labels)
         tmp = self.ce_loss_fn(logits.float(), labels)
         metric.update({'ce': tmp.data})
         
@@ -211,9 +213,11 @@ class Baseline(nn.Module):
 
         return loss, metric
 
-    def step(self, t, feats, sub):
-        v = feats[sub==0]
-        i = feats[sub==1]
+    def step(self, t, feats, sub, labels):
+        v = feats[sub == 0]
+        i = feats[sub == 1]
+        v_l = labels[sub == 0]
+        i_l = labels[sub == 1]
         if t == 0:
             f1 = v
             f2 = i

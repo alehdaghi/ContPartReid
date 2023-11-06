@@ -13,9 +13,14 @@ def pairwise_distance(query_features, gallery_features):
     m, n = x.size(0), y.size(0)
     x = x.view(m, -1)
     y = y.view(n, -1)
-    dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
-            torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
-    dist.addmm_(1, -2, x, y.t())
+    # dist = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+    #         torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+    # dist.addmm_(1, -2, x, y.t())
+    x1 = F.normalize(x[:, -2048:], dim=1)
+    x2 = F.normalize(x[:, :-2048], dim=1)
+    y1 = F.normalize(y[:, -2048:], dim=1)
+    y2 = F.normalize(y[:, :-2048], dim=1)
+    dist = - (x @ y.t()) #- (x2 @ y2.t())
     return dist
 
 
