@@ -144,7 +144,6 @@ class Baseline(nn.Module):
         part_feat = self.vit(maskedFeat)
         feat = torch.cat([part_feat, global_feat], dim=1)
         loss_id = 0
-        t=1
         if t >= self.part_num:
             loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
         elif t == 0:
