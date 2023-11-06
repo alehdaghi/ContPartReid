@@ -144,6 +144,7 @@ class Baseline(nn.Module):
         part_feat = self.vit(maskedFeat)
         feat = torch.cat([part_feat, global_feat], dim=1)
         loss_id = 0
+        t=1
         if t >= self.part_num:
             loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
         elif t == 0:
@@ -165,7 +166,8 @@ class Baseline(nn.Module):
             infFeat = torch.cat((infPure, infFused), dim=0)
             visFeat = einops.rearrange(visFeat, '(m p k) ... -> (p k m) ...', k=self.k_size // 2, m = 2)
             infFeat = einops.rearrange(infFeat, '(m p k) ... -> (p k m) ...', k=self.k_size // 2, m = 2)
-            visFeat = self.bn_neck(visFeat)
+            visFeat = self.bn_neck(visFeat, torch.zeros(labels.shape[0]))
+            infFeat = self.bn_neck(infFeat, torch.ones(labels.shape[0]))
 
             loss_cs1, _, _ = self.cs_loss_fn(visFeat.float(), labels, self.k_size)
             loss_cs2, _, _ = self.cs_loss_fn(infFeat.float(), labels, self.k_size)
