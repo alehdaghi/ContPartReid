@@ -11,7 +11,7 @@ from data import get_test_loader
 from data import get_train_loader
 from engine import get_trainer
 from models.baseline import Baseline
-
+from torch.utils.tensorboard import SummaryWriter
 
 def train(cfg): 
     # set logger
@@ -144,6 +144,7 @@ def train(cfg):
                          optimizer=optimizer,
                          lr_scheduler=lr_scheduler,
                          logger=logger,
+                         writer=SummaryWriter(),
                          non_blocking=True,
                          log_period=cfg.log_period,
                          save_dir=checkpoint_dir,

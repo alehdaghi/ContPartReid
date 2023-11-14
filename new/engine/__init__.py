@@ -11,6 +11,7 @@ from ignite.handlers import Timer
 from engine.engine import create_eval_engine
 from engine.engine import create_train_engine
 from engine.metric import AutoKVMetric
+from part.mmd import partMMD
 from utils.eval_sysu import eval_sysu
 from utils.eval_regdb import eval_regdb
 from configs.default.dataset import dataset_cfg
@@ -126,7 +127,7 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
         if epoch % eval_interval == 0:
             logger.info("Model saved at {}/{}_model_{}.pth".format(save_dir, prefix, epoch))
 
-        if evaluator and epoch % eval_interval == 0 and epoch > start_eval:
+        if evaluator and epoch % eval_interval == 0 and epoch >= start_eval:
             torch.cuda.empty_cache()
 
             # extract query feature
@@ -144,6 +145,15 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
             g_ids = torch.cat(evaluator.state.id_list, dim=0).numpy()
             g_cams = torch.cat(evaluator.state.cam_list, dim=0).numpy()
             g_img_paths = np.concatenate(evaluator.state.img_path_list, axis=0)
+
+            if writer is not None:
+                t = min(epoch // 10, model.part_num)
+                IZ, VZ, IV, ZZ = partMMD(t, q_feats[:, :-2048], g_feats[:, :-2048], q_ids, g_ids)
+
+                writer.add_scalar("eval/IZ", IZ, epoch)
+                writer.add_scalar("eval/VZ", VZ, epoch)
+                writer.add_scalar("eval/IZ", IZ, epoch)
+                writer.add_scalar("eval/ZZ", ZZ, epoch)
 
             if dataset == 'sysu':
                 perm = sio.loadmat(os.path.join(dataset_cfg.sysu.data_root, 'exp', 'rand_perm_cam.mat'))[
@@ -165,6 +175,7 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
                 torch.save(model.state_dict(), "{}/model_best.pth".format(save_dir))
 
             if writer is not None:
+
                 writer.add_scalar('eval/mAP', mAP, epoch)
                 writer.add_scalar('eval/r1', r1, epoch)
                 writer.add_scalar('eval/r5', r5, epoch)
@@ -211,4 +222,5 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
             timer.reset()
 
     trainer.train_completed = train_completed
+    trainer.epoch_completed_callback = epoch_completed_callback
     return trainer
