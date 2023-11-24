@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
+
 
 class MMD_loss(nn.Module):
     def __init__(self, kernel_mul = 2.0, kernel_num = 5):
@@ -37,6 +39,8 @@ class MMD_loss(nn.Module):
 
 
 def partMMD(t, q_feats, g_feats , q_ids, g_ids):
+    q_feats = F.normalize(q_feats, dim=1)
+    g_feats = F.normalize(g_feats, dim=1)
     mmd = MMD_loss()
     ids = np.unique(q_ids)
     S_Z, T_Z, S_T, Z_Z = 0, 0, 0, 0

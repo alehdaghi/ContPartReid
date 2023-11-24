@@ -50,9 +50,9 @@ def create_eval_engine(model, non_blocking=False):
         data = data.to(device, non_blocking=non_blocking)
 
         with no_grad():
-            feat = model(data, cam_ids=cam_ids.to(device, non_blocking=non_blocking))
+            feat, feat2 = model(data, cam_ids=cam_ids.to(device, non_blocking=non_blocking))
 
-        return feat.data.float().cpu(), labels, cam_ids, np.array(img_paths)
+        return feat.data.float().cpu(), labels, cam_ids, np.array(img_paths), feat2.data.float().cpu()
 
     engine = Engine(_process_func)
 
@@ -82,11 +82,17 @@ def create_eval_engine(model, non_blocking=False):
         else:
             engine.state.img_path_list.clear()
 
+        if not hasattr(engine.state, "feat_list2"):
+            setattr(engine.state, "feat_list2", [])
+        else:
+            engine.state.feat_list2.clear()
+
     @engine.on(Events.ITERATION_COMPLETED)
     def store_data(engine):
         engine.state.feat_list.append(engine.state.output[0])
         engine.state.id_list.append(engine.state.output[1])
         engine.state.cam_list.append(engine.state.output[2])
         engine.state.img_path_list.append(engine.state.output[3])
+        engine.state.feat_list2.append(engine.state.output[4])
 
     return engine

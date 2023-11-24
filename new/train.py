@@ -1,7 +1,7 @@
 import logging
 import os
 import pprint
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
 import yaml
 # from apex import amp

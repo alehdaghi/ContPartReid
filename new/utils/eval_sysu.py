@@ -103,7 +103,7 @@ def get_mAP(sorted_indices, query_ids, query_cam_ids, gallery_ids, gallery_cam_i
 
 
 def eval_sysu(query_feats, query_ids, query_cam_ids, gallery_feats, gallery_ids, gallery_cam_ids, gallery_img_paths,
-              perm, mode='all', num_shots=1, num_trials=10, aim=True, k1=30, k2=6):
+              perm, mode='all', num_shots=1, num_trials=10, aim=True, k1=30, k2=6, dist_matAll=None):
     assert mode in ['indoor', 'all']
 
     gallery_cams = [1, 2] if mode == 'indoor' else [1, 2, 4, 5]
@@ -132,10 +132,14 @@ def eval_sysu(query_feats, query_ids, query_cam_ids, gallery_feats, gallery_ids,
         g_ids = gallery_ids[flag]
         g_cam_ids = gallery_cam_ids[flag]
 
-        if aim:
-            dist_mat = AIM(query_feats, g_feat, k1=k1, k2=k2)
+        if dist_matAll is None:
+            if aim:
+                dist_mat = AIM(query_feats, g_feat, k1=k1, k2=k2)
+            else:
+                dist_mat = pairwise_distance(query_feats, g_feat)
         else:
-            dist_mat = pairwise_distance(query_feats, g_feat)
+            dist_mat = dist_matAll[:, flag]
+
 
         sorted_indices = np.argsort(dist_mat, axis=1)
 

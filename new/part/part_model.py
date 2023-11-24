@@ -190,3 +190,67 @@ class PartModel(nn.Module):
         x = torch.cat([parsing_fea, edge_fea], dim=1)
         fusion_result = self.fushion(x)
         return [[parsing_result, fusion_result], [edge_result]], x
+
+
+def weights_init_kaiming(m):
+    classname = m.__class__.__name__
+    # print(classname)
+    if classname.find('Conv') != -1:
+        init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+    elif classname.find('Linear') != -1:
+        init.kaiming_normal_(m.weight.data, a=0, mode='fan_out')
+        init.zeros_(m.bias.data)
+    elif classname.find('BatchNorm1d') != -1:
+        init.normal_(m.weight.data, 1.0, 0.01)
+        init.zeros_(m.bias.data)
+
+class DEE_module(nn.Module):
+    def __init__(self, channel, reduction=16):
+        super(DEE_module, self).__init__()
+
+        self.FC11 = nn.Conv2d(channel, channel//4, kernel_size=3, stride=1, padding=1, bias=False, dilation=1)
+        self.FC11.apply(weights_init_kaiming)
+        self.FC12 = nn.Conv2d(channel, channel//4, kernel_size=3, stride=1, padding=2, bias=False, dilation=2)
+        self.FC12.apply(weights_init_kaiming)
+        self.FC13 = nn.Conv2d(channel, channel//4, kernel_size=3, stride=1, padding=3, bias=False, dilation=3)
+        self.FC13.apply(weights_init_kaiming)
+        self.FC1 = nn.Conv2d(channel//4, channel, kernel_size=1)
+        self.FC1.apply(weights_init_kaiming)
+
+
+    def forward(self, x):
+        x1 = (self.FC11(x) + self.FC12(x) + self.FC13(x))/3
+        x1 = self.FC1(F.relu(x1))
+        # out = torch.cat((x, x1), 0)
+        out = self.dropout(x1)
+        return out
+
+class PRM_module(nn.Module):
+    def __init__(self, channel, reduction=16, part_num=7):
+        super(PRM_module, self).__init__()
+
+        self.down1 = nn.Conv2d(channel, channel//4, kernel_size=3, stride=2, padding=1, bias=False, dilation=1)
+        self.down1.apply(weights_init_kaiming)
+        self.down2 = nn.Conv2d(channel, channel//4, kernel_size=3, stride=2, padding=2, bias=False, dilation=2)
+        self.down2.apply(weights_init_kaiming)
+        self.down3 = nn.Conv2d(channel, channel//4, kernel_size=3, stride=2, padding=3, bias=False, dilation=3)
+        self.down3.apply(weights_init_kaiming)
+
+        self.up = nn.ConvTranspose2d(3 * (channel//4), channel//4, kernel_size=3, stride=2, padding=1)
+
+        self.skip = nn.Conv2d(channel, channel//4, kernel_size=1)
+        self.skip.apply(weights_init_kaiming)
+
+        self.FC = nn.Conv2d(channel//2, part_num, kernel_size=1, bias=False)
+        self.FC.apply(weights_init_kaiming)
+        self.active = nn.Sigmoid()
+
+    def forward(self, x):
+        xDown = torch.concat([self.down3(x), self.down3(x), self.down3(x)], dim=1)
+        xUp = self.up(xDown, output_size=(x.shape[-2], x.shape[-1]))
+        x = self.skip(x)
+        x = torch.cat([x, xUp], dim=1)
+        out = self.FC(x)
+
+        # out = torch.cat((x, x1), 0)
+        return self.active(out)

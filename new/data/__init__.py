@@ -40,7 +40,7 @@ def get_train_loader(dataset, root, sample_method, batch_size, p_size, k_size, i
     t.extend([T.ToTensor(), RandomGrayscale(), T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
     if random_erase:
-        t.append(T.RandomErasing(value='random'))
+        t.append(T.RandomErasing(value='random', p=0.6, scale=(0.05, 0.38)))
         # t.append(Jigsaw())
 
     transform = T.Compose(t)

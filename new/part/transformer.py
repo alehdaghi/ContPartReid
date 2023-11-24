@@ -84,9 +84,9 @@ class SimpleViT(nn.Module):
 
 
         # x = torch.stack(feats_arr, dim=0)
-        x = feats + self.pos_embedding
+        x = feats #+ self.pos_embedding
 
-        x = self.transformer(x)
+        # x = self.transformer(x)
         x = x.reshape(x.shape[0], -1)
 
         # x = self.bottleneck(x)

@@ -153,8 +153,8 @@ def train(cfg):
 
     # training
     # engine.run(train_loader, max_epochs=cfg.num_epoch)
-    engine.train_completed(engine)
-    # engine.epoch_completed_callback(engine)
+    # engine.train_completed(engine)
+    engine.epoch_completed_callback(engine)
 
 
 if __name__ == '__main__':
@@ -170,7 +170,7 @@ if __name__ == '__main__':
     parser.add_argument("--log_name", type=str, default="log.txt")
     parser.add_argument("--backbone", type=str, default="resnet50")
     parser.add_argument("--update_rate", type=float, default=0.02)
-    parser.add_argument("--num_parts", type=int, default=6)
+    parser.add_argument("--num_parts", type=int, default=7)
     parser.add_argument("--margin1", type=float, default=0.01)
     parser.add_argument("--margin2", type=float, default=0.7)
     parser.add_argument("--dp", type=str, default="l2")

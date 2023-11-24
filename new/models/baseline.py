@@ -7,8 +7,8 @@ from torch.nn import Parameter
 import numpy as np
 
 from models.resnet import resnet50, resnet18
-from part.losses import contrastive_loss
-from part.part_model import PartModel
+from part.losses import contrastive_loss, CPMLoss
+from part.part_model import PartModel, DEE_module, PRM_module
 from part.transformer import SimpleViT
 from utils.calc_acc import calc_acc
 
@@ -39,7 +39,7 @@ class Baseline(nn.Module):
             D = 512
 
         self.base_dim = D
-        self.dim = D
+        self.dim = 2048
         self.k_size = kwargs.get('k_size', 8)
         self.part_num = kwargs.get('num_parts', 7)
         self.dp = kwargs.get('dp', "l2")
@@ -70,13 +70,28 @@ class Baseline(nn.Module):
         self.cs_loss_fn = CSLoss(k_size=self.k_size, margin1=self.margin1, margin2=self.margin2)
 
         self.clsParts = nn.ModuleList(
-            [nn.Sequential(nn.Linear(2048, 1024, bias=False), nn.BatchNorm1d(1024), nn.Linear(1024, num_classes, bias=False)) for i in range(self.part_num)])
+            [nn.Sequential(nn.BatchNorm1d(self.dim), nn.Linear(self.dim, num_classes, bias=False)) for i in range(self.part_num)])
 
         self.part = PartModel(self.part_num)
-        self.vit = SimpleViT(token_size=self.part_num, num_classes=num_classes, dim=2048, depth=6)
+        self.vit = SimpleViT(token_size=self.part_num, num_classes=num_classes, dim=2048, depth=1)
 
         self.bn_neck_part = DualBNNeck(self.base_dim + self.dim * self.part_num)
         self.classifier_part = nn.Linear(self.dim * self.part_num, num_classes, bias=False)
+
+        # self.projs = nn.ParameterList([])
+        # proj = nn.Parameter(torch.zeros([self.base_dim, 512], dtype=torch.float32, requires_grad=True))
+        # nn.init.kaiming_normal_(proj, nonlinearity="linear")
+        # for i in range(self.part_num):
+        #     proj_p = nn.Parameter(torch.zeros([self.dim, 512], dtype=torch.float32, requires_grad=True))
+        #     nn.init.kaiming_normal_(proj_p, nonlinearity="linear")
+        #     self.projs.append(proj_p)
+        #
+        # self.projs.append(proj)
+
+        self.DEE = DEE_module(1024)
+        self.PRM = PRM_module(2048, part_num=self.part_num)
+        self.cmp = CPMLoss()
+
 
     
     def forward(self, inputs, labels=None, **kwargs):
@@ -87,20 +102,28 @@ class Baseline(nn.Module):
         # CNN
         global_feat, x3, x2, x1 = self.backbone(inputs)
 
+        x4_part = self.backbone.layer4(x3)
+        if self.backbone.modality_attention > 0:
+            x4_part = self.backbone.MAM4(x4_part)
+
         b, c, w, h = global_feat.shape
 
-        part, partsFeat = self.part(global_feat, x1, x2, x3)
-        part_masks3 = F.softmax( F.normalize(part[0][0] + part[0][1]), dim=1)
-        maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks3, partsFeat) / (16 * h * w)
+        # part, partsFeat = self.part(global_feat, x1, x2, x3)
+        # part_masks3 = F.softmax(F.normalize(part[0][1]), dim=1)
+        # maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks3, partsFeat) / (
+        #             partsFeat.shape[-1] * partsFeat.shape[-2])
 
-        attn = F.avg_pool2d(part_masks3, kernel_size=(4, 4))
-        maskedFeat = torch.einsum('brhw, bchw -> brc', attn, global_feat) / (h * w)
+        # attn = part_masks3#F.avg_pool2d(part_masks3, kernel_size=(4, 4))
+        # maskedFeat = maskedFeatX3#torch.einsum('brhw, bchw -> brc', attn, global_feat) / (h * w)
 
-        # part_feat, attn = self.attn_pool(global_feat)
+        # maskedFeat, attn = self.attn_pool(x4_part)
+        attn = self.PRM(x4_part)
+        maskedFeat = torch.einsum('brhw, bchw -> brc', attn, x4_part) / (h * w)
 
+        global_feat = global_feat.mean(dim=(2, 3))
 
         if self.training:
-            masks = attn.view(b, self.part_num, w*h)
+            masks = attn.view(b, self.part_num, -1)
             if self.dp == "cos":
                 loss_dp = torch.bmm(masks, masks.permute(0, 2, 1))
                 loss_dp = torch.triu(loss_dp, diagonal = 1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
@@ -114,9 +137,13 @@ class Baseline(nn.Module):
                 loss_dp *= self.dp_w
 
             F2 = einops.rearrange(maskedFeat, '(p k) ... -> p k ...', k=self.k_size) # k_size * p_size * num_part
-            cont_part2 = sum([contrastive_loss(f) for f in F2]) / F2.shape[0]
 
-            loss_un = contrastive_loss(maskedFeatX3) + cont_part2
+            simGtP = 0
+            for i in range(self.part_num):
+                simGtP = simGtP +  (global_feat * maskedFeat[:, i]).sum(1).abs().mean()
+            cont_part2 = sum([contrastive_loss(f) for f in F2]) / F2.shape[0] + simGtP/(self.part_num)
+
+            loss_un = cont_part2   #+ 0.3*contrastive_loss(maskedFeatX3)
             partsScore = []
             for i in range(0, self.part_num):  # 0 is background!
                 # feat = self.part_descriptor[i](maskedFeat[:, i])
@@ -127,23 +154,31 @@ class Baseline(nn.Module):
 
         if not self.training:
             part_feat = self.vit(maskedFeat)
-            global_feat = global_feat.mean(dim=(2, 3))
+
             # feats = self.vit(torch.hstack([maskedFeat, global_feat.unsqueeze(1)]))
-            feats = torch.cat([part_feat, global_feat], dim=1)
-            feats = self.bn_neck(feats, sub)
-            return feats
+            feats_b = torch.cat([part_feat, global_feat], dim=1)
+            feats = self.bn_neck(feats_b.clone(), sub)
+            return feats, feats_b
         else:
             return self.train_forward(maskedFeat, global_feat, labels, loss_dp, sub, loss_un, loss_pid, **kwargs)
 
     def train_forward(self, maskedFeat, global_feat, labels, loss_dp, sub, loss_un, loss_pid, **kwargs):
         metric = {}
         epoch = kwargs.get('epoch')
-        t = min(epoch // 10, self.part_num)
+        t = min(epoch // 20, self.part_num)
 
-        global_feat = global_feat.mean(dim=(2, 3))
+        ft1 = global_feat[sub == 0]
+        ft2 = global_feat[sub == 1]
+        lb1 = labels[sub == 0]
+        lb2 = labels[sub == 1]
+        cmp_loss = 0
+        # for i in range(self.part_num):
+        #     cmp_loss = cmp_loss + self.cmp(ft1, ft2, maskedFeat[:, i][sub == 0], maskedFeat[:, i][sub == 1], lb1)
+        # cmp_loss = cmp_loss / self.part_num
         part_feat = self.vit(maskedFeat)
         feat = torch.cat([part_feat, global_feat], dim=1)
         loss_id = 0
+        t = 100
         if t >= self.part_num:
             loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
         elif t == 0:
@@ -175,6 +210,7 @@ class Baseline(nn.Module):
             logitsI = self.classifier(infFeat)
             loss_id = self.ce_loss_fn(logitsV.float(), labels) + self.ce_loss_fn(logitsI.float(), labels)
 
+        loss_p_reid = self.cs_loss_fn(feat[:, :-2048].float(), labels, self.k_size)[0]
         F3 = einops.rearrange(part_feat, '(p k) ... -> k p ...',  k=self.k_size)
 
 
@@ -207,21 +243,42 @@ class Baseline(nn.Module):
             logits_m_ = torch.cat([logits_v_, logits_i_], 0).float()
 
 
-        loss_p_reid = self.cs_loss_fn(feat[:, :-2048].float(), labels, self.k_size)[0] +\
-                      self.ce_loss_fn(self.classifier_part(feat[:, :-2048]).float(), labels)
+        # loss_p_reid = self.cs_loss_fn(feat[:, :-2048].float(), labels, self.k_size)[0] \
+                      # + self.ce_loss_fn(self.classifier_part(feat[:, :-2048]).float(), labels)
 
-        loss_id += self.ce_loss_fn(logits_m, logits_m_.softmax(dim=1)) 
+        loss_id += self.ce_loss_fn(logits_m, logits_m_.softmax(dim=1))
 
+        # loss_ortho_1, loss_ortho_2 = 0, 0
+        # proj = F.normalize(self.projs[-1], 2, 0)
+        # feat_p = torch.mm(global_feat, proj)
+        # proj_inner = torch.mm(proj.t(), proj)
+        # eye_label = torch.eye(self.projs[0].shape[1], device=feat.device)
+        # loss_ortho_2 = (proj_inner - eye_label).abs().sum(1).mean()
+        # for i in range(0, self.part_num):
+        #     proj = F.normalize(self.projs[i], 2, 0)
+        #     part_p = torch.mm(maskedFeat[:, i], proj)
+        #     loss_ortho_1 = loss_ortho_1 + (feat_p * part_p).abs().sum(1).mean()
+        #
+        #     proj_inner = torch.mm(proj.t(), proj)
+        #     eye_label = torch.eye(self.projs[i].shape[1], device=feat.device)
+        #     loss_ortho_2 = loss_ortho_2 + (proj_inner - eye_label).abs().sum(1).mean()
+
+        # loss_ortho_2 = loss_ortho_2 / (self.part_num + 1)
+        # loss_ortho_2 = loss_ortho_2 / (self.part_num )
         metric.update({'id': loss_id.data})
         metric.update({'cs': loss_cs.data})
         metric.update({'dp': loss_dp.data})
         metric.update({'un': loss_un.data})
-        metric.update({'pid': loss_pid.data})
-        metric.update({'pre': loss_p_reid.data})
-        metric.update({'t': t})
+        metric.update({'pi': loss_pid.data})
+        metric.update({'pr': loss_p_reid.data})
+        # metric.update({'cmp': cmp_loss.data})
+        # metric.update({'o1': loss_ortho_1.data})
+        # metric.update({'o2': loss_ortho_2.data})
+        # metric.update({'t': t})
 
 
-        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_un + loss_pid + loss_p_reid
+
+        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + 0.05*loss_un + 0.5*loss_pid + loss_p_reid #+ 0.05*cmp_loss#+ loss_ortho_1 + loss_ortho_2#+ loss_p_reid
 
         return loss, metric
 
