@@ -41,7 +41,7 @@ class Baseline(nn.Module):
         self.base_dim = D
         self.dim = 2048
         self.k_size = kwargs.get('k_size', 8)
-        self.part_num = kwargs.get('num_parts', 7)
+        self.part_num = 0 #kwargs.get('num_parts', 7)
         self.dp = kwargs.get('dp', "l2")
         self.dp_w = kwargs.get('dp_w', 0.5)
         self.cs_w = kwargs.get('cs_w', 1.0)
@@ -69,14 +69,9 @@ class Baseline(nn.Module):
         self.ce_loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
         self.cs_loss_fn = CSLoss(k_size=self.k_size, margin1=self.margin1, margin2=self.margin2)
 
-        self.clsParts = nn.ModuleList(
-            [nn.Sequential(nn.BatchNorm1d(self.dim), nn.Linear(self.dim, num_classes, bias=False)) for i in range(self.part_num)])
 
-        self.part = PartModel(self.part_num)
-        self.vit = SimpleViT(token_size=self.part_num, num_classes=num_classes, dim=2048, depth=1)
 
         self.bn_neck_part = DualBNNeck(self.base_dim + self.dim * self.part_num)
-        self.classifier_part = nn.Linear(self.dim * self.part_num, num_classes, bias=False)
 
         # self.projs = nn.ParameterList([])
         # proj = nn.Parameter(torch.zeros([self.base_dim, 512], dtype=torch.float32, requires_grad=True))
@@ -88,8 +83,6 @@ class Baseline(nn.Module):
         #
         # self.projs.append(proj)
 
-        self.DEE = DEE_module(1024)
-        self.PRM = PRM_module(2048, part_num=self.part_num)
         self.cmp = CPMLoss()
 
 
