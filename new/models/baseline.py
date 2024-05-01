@@ -107,122 +107,28 @@ class Baseline(nn.Module):
             x4_part = self.backbone.MAM4(x4_part)
 
         b, c, w, h = global_feat.shape
-
-        # part, partsFeat = self.part(global_feat, x1, x2, x3)
-        # part_masks3 = F.softmax(F.normalize(part[0][1]), dim=1)
-        # maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks3, partsFeat) / (
-        #             partsFeat.shape[-1] * partsFeat.shape[-2])
-
-        # attn = part_masks3#F.avg_pool2d(part_masks3, kernel_size=(4, 4))
-        # maskedFeat = maskedFeatX3#torch.einsum('brhw, bchw -> brc', attn, global_feat) / (h * w)
-
-        # maskedFeat, attn = self.attn_pool(x4_part)
-        attn = self.PRM(x4_part)
-        maskedFeat = torch.einsum('brhw, bchw -> brc', attn, x4_part) / (h * w)
-
         global_feat = global_feat.mean(dim=(2, 3))
-
-        if self.training:
-            masks = attn.view(b, self.part_num, -1)
-            if self.dp == "cos":
-                loss_dp = torch.bmm(masks, masks.permute(0, 2, 1))
-                loss_dp = torch.triu(loss_dp, diagonal = 1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
-                loss_dp += -masks.mean() + 1 
-            elif self.dp == "l2":
-                loss_dp = 0 
-                for i in range(self.part_num):
-                    for j in range(i+1, self.part_num):
-                        loss_dp += ((((masks[:, i] - masks[:, j]) ** 2).sum(dim=1) /(18 * 9)) ** 0.5).sum()
-                loss_dp = - loss_dp / (b * self.part_num * (self.part_num - 1) / 2)
-                loss_dp *= self.dp_w
-
-            F2 = einops.rearrange(maskedFeat, '(p k) ... -> p k ...', k=self.k_size) # k_size * p_size * num_part
-
-            simGtP = 0
-            for i in range(self.part_num):
-                simGtP = simGtP +  (global_feat * maskedFeat[:, i]).sum(1).abs().mean()
-            cont_part2 = sum([contrastive_loss(f) for f in F2]) / F2.shape[0] + simGtP/(self.part_num)
-
-            loss_un = cont_part2   #+ 0.3*contrastive_loss(maskedFeatX3)
-            partsScore = []
-            for i in range(0, self.part_num):  # 0 is background!
-                # feat = self.part_descriptor[i](maskedFeat[:, i])
-                partsScore.append(self.clsParts[i](maskedFeat[:, i]))
-
-            loss_pid = sum([self.ce_loss_fn(ps, labels) / 6 for ps in partsScore])
-
-
         if not self.training:
-            part_feat = self.vit(maskedFeat)
 
             # feats = self.vit(torch.hstack([maskedFeat, global_feat.unsqueeze(1)]))
-            feats_b = torch.cat([part_feat, global_feat], dim=1)
+            feats_b = global_feat
             feats = self.bn_neck(feats_b.clone(), sub)
             return feats, feats_b
         else:
-            return self.train_forward(maskedFeat, global_feat, labels, loss_dp, sub, loss_un, loss_pid, **kwargs)
+            return self.train_forward(global_feat, labels, sub, **kwargs)
 
-    def train_forward(self, maskedFeat, global_feat, labels, loss_dp, sub, loss_un, loss_pid, **kwargs):
+    def train_forward(self, feat, labels, sub, **kwargs):
         metric = {}
         epoch = kwargs.get('epoch')
-        t = min(epoch // 20, self.part_num)
-
-        ft1 = global_feat[sub == 0]
-        ft2 = global_feat[sub == 1]
-        lb1 = labels[sub == 0]
-        lb2 = labels[sub == 1]
-        cmp_loss = 0
-        # for i in range(self.part_num):
-        #     cmp_loss = cmp_loss + self.cmp(ft1, ft2, maskedFeat[:, i][sub == 0], maskedFeat[:, i][sub == 1], lb1)
-        # cmp_loss = cmp_loss / self.part_num
-        part_feat = self.vit(maskedFeat)
-        feat = torch.cat([part_feat, global_feat], dim=1)
-        loss_id = 0
-        t = 100
-        if t >= self.part_num:
-            loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
-        elif t == 0:
-            loss_cs1, _, _ = self.cs_loss_fn(feat[sub==0].float(), labels[sub == 0], self.k_size // 2)
-            loss_cs2, _, _ = self.cs_loss_fn(feat[sub==1].float(), labels[sub == 1], self.k_size // 2)
-            loss_cs = loss_cs1 + loss_cs2
-        else:
-            visP, infP = self.step(t, maskedFeat, sub, labels)
-            visG, infG = global_feat[sub == 0], global_feat[sub == 1]
-            visP = self.vit(visP)
-            infP = self.vit(infP)
-            visFused = torch.cat([visP, visG], dim=1)
-            infFused = torch.cat([infP, infG], dim=1)
-
-
-            visPure, infPure = feat[sub == 0], feat[sub == 1]
-
-            visFeat = torch.cat((visPure, visFused), dim=0)
-            infFeat = torch.cat((infPure, infFused), dim=0)
-            visFeat = einops.rearrange(visFeat, '(m p k) ... -> (p k m) ...', k=self.k_size // 2, m = 2)
-            infFeat = einops.rearrange(infFeat, '(m p k) ... -> (p k m) ...', k=self.k_size // 2, m = 2)
-            visFeat = self.bn_neck(visFeat, torch.zeros(labels.shape[0]))
-            infFeat = self.bn_neck(infFeat, torch.ones(labels.shape[0]))
-
-            loss_cs1, _, _ = self.cs_loss_fn(visFeat.float(), labels, self.k_size)
-            loss_cs2, _, _ = self.cs_loss_fn(infFeat.float(), labels, self.k_size)
-            loss_cs = loss_cs1 + loss_cs2
-            logitsV = self.classifier(visFeat)
-            logitsI = self.classifier(infFeat)
-            loss_id = self.ce_loss_fn(logitsV.float(), labels) + self.ce_loss_fn(logitsI.float(), labels)
-
-        loss_p_reid = self.cs_loss_fn(feat[:, :-2048].float(), labels, self.k_size)[0]
-        F3 = einops.rearrange(part_feat, '(p k) ... -> k p ...',  k=self.k_size)
-
-
-        loss_un = loss_un  #0.5 * contrastive_loss(F3, t=0.6)
-
         feat = self.bn_neck(feat, sub)
     
         logits = self.classifier(feat)
-        loss_id = 0.5*loss_id + self.ce_loss_fn(logits.float(), labels)
+        loss_id = self.ce_loss_fn(logits.float(), labels)
         tmp = self.ce_loss_fn(logits.float(), labels)
         metric.update({'ce': tmp.data})
-        
+
+        loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
+
         cam_ids = kwargs.get('cam_ids')
         sub = (cam_ids == 3) + (cam_ids == 6)
         
@@ -242,44 +148,14 @@ class Baseline(nn.Module):
             logits_i_ = self.visible_classifier_(feat[sub == 1])
             logits_m_ = torch.cat([logits_v_, logits_i_], 0).float()
 
-
-        # loss_p_reid = self.cs_loss_fn(feat[:, :-2048].float(), labels, self.k_size)[0] \
-                      # + self.ce_loss_fn(self.classifier_part(feat[:, :-2048]).float(), labels)
-
         loss_id += self.ce_loss_fn(logits_m, logits_m_.softmax(dim=1))
 
-        # loss_ortho_1, loss_ortho_2 = 0, 0
-        # proj = F.normalize(self.projs[-1], 2, 0)
-        # feat_p = torch.mm(global_feat, proj)
-        # proj_inner = torch.mm(proj.t(), proj)
-        # eye_label = torch.eye(self.projs[0].shape[1], device=feat.device)
-        # loss_ortho_2 = (proj_inner - eye_label).abs().sum(1).mean()
-        # for i in range(0, self.part_num):
-        #     proj = F.normalize(self.projs[i], 2, 0)
-        #     part_p = torch.mm(maskedFeat[:, i], proj)
-        #     loss_ortho_1 = loss_ortho_1 + (feat_p * part_p).abs().sum(1).mean()
-        #
-        #     proj_inner = torch.mm(proj.t(), proj)
-        #     eye_label = torch.eye(self.projs[i].shape[1], device=feat.device)
-        #     loss_ortho_2 = loss_ortho_2 + (proj_inner - eye_label).abs().sum(1).mean()
-
-        # loss_ortho_2 = loss_ortho_2 / (self.part_num + 1)
-        # loss_ortho_2 = loss_ortho_2 / (self.part_num )
         metric.update({'id': loss_id.data})
-        metric.update({'cs': loss_cs.data})
-        metric.update({'dp': loss_dp.data})
-        metric.update({'un': loss_un.data})
-        metric.update({'pi': loss_pid.data})
-        metric.update({'pr': loss_p_reid.data})
         # metric.update({'cmp': cmp_loss.data})
         # metric.update({'o1': loss_ortho_1.data})
         # metric.update({'o2': loss_ortho_2.data})
         # metric.update({'t': t})
-
-
-
-        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + 0.05*loss_un + 0.5*loss_pid + loss_p_reid #+ 0.05*cmp_loss#+ loss_ortho_1 + loss_ortho_2#+ loss_p_reid
-
+        loss = loss_id + loss_cs * self.cs_w
         return loss, metric
 
     def step(self, t, feats, sub, labels):
