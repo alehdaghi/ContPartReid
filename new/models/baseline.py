@@ -94,7 +94,7 @@ class Baseline(nn.Module):
     def train_forward(self, feat, labels, loss_dp, sub, **kwargs):
         metric = {}
 
-        loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels)
+        loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
         feat = self.bn_neck(feat, sub)
 
         logits = self.classifier(feat)
