@@ -90,11 +90,8 @@ def train(cfg):
 
     # optimizer
     # assert cfg.optimizer in ['adam', 'sgd']
-    ignored_params = list(map(id, model.vit.parameters()))
-    base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
     if cfg.optimizer == 'adam':
         optimizer = optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.wd)
-        optimizer2 = optim.Adam(base_params, lr=cfg.lr, weight_decay=cfg.wd)
     # else:
     # optimizer = optim.SGD(model.parameters(), lr=0.1, weight_decay=5e-4, momentum=0.9, nesterov=True)
     # ignored_params = list(map(id, model.local_conv_list.parameters())) \

@@ -36,7 +36,7 @@ modality_attention: 2
 # optimizer
 lr: 0.00035
 optimizer: adam
-num_epoch: 360
+num_epoch: 160
 lr_step: [80, 120]
 
 # augmentation
@@ -49,4 +49,4 @@ padding: 10
 # log
 log_period: 50
 start_eval: 0
-eval_interval: 2
+eval_interval: 10
