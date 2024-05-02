@@ -86,8 +86,8 @@ class Baseline(nn.Module):
         # CNN
         global_feat, x3, x2, x1 = self.backbone(inputs)
 
-        v_feat, _, _, _, _ = self.v_backbone(inputs[sub == 0])
-        i_feat, _, _, _, _ = self.v_backbone(inputs[sub == 1])
+        v_feat, _, _, _ = self.v_backbone(inputs[sub == 0])
+        i_feat, _, _, _ = self.v_backbone(inputs[sub == 1])
 
 
         b, c, w, h = global_feat.shape
