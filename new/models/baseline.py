@@ -45,7 +45,7 @@ class Baseline(nn.Module):
 
         self.v_backbone = copy.deepcopy(self.backbone)
         self.i_backbone = copy.deepcopy(self.backbone)
-        self.vi_classifier = nn.Linear(self.base_dim + self.dim * self.part_num, 2 * num_classes, bias=False)
+        self.vi_classifier = nn.Linear(D, 2 * num_classes, bias=False)
         self.v_neck = nn.BatchNorm1d(D)
         self.i_neck = nn.BatchNorm1d(D)
 
