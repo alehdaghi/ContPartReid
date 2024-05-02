@@ -77,7 +77,7 @@ class Baseline(nn.Module):
         cam_ids = kwargs.get('cam_ids')
         sub = (cam_ids == 3) + (cam_ids == 6)
         # CNN
-        global_feat = self.backbone(inputs)
+        global_feat, x3, x2, x1 = self.backbone(inputs)
 
         b, c, w, h = global_feat.shape
 
