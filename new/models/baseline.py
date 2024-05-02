@@ -87,7 +87,7 @@ class Baseline(nn.Module):
 
         if not self.training:
             feats = self.bn_neck(feats, sub)
-            return feats
+            return feats, feats
         else:
             return self.train_forward(feats, labels, 0, sub, **kwargs)
 
