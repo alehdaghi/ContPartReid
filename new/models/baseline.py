@@ -1,3 +1,4 @@
+import copy
 import math
 import torch
 import torch.nn as nn
@@ -42,6 +43,12 @@ class Baseline(nn.Module):
                                      modality_attention=modality_attention)
             D = 512
 
+        self.v_backbone = copy.deepcopy(self.backbone)
+        self.i_backbone = copy.deepcopy(self.backbone)
+        self.vi_classifier = nn.Linear(self.base_dim + self.dim * self.part_num, 2 * num_classes, bias=False)
+        self.v_neck = nn.BatchNorm1d(D)
+        self.i_neck = nn.BatchNorm1d(D)
+
         self.base_dim = D
         self.dim = D
         self.k_size = kwargs.get('k_size', 8)
@@ -79,6 +86,10 @@ class Baseline(nn.Module):
         # CNN
         global_feat, x3, x2, x1 = self.backbone(inputs)
 
+        v_feat, _, _, _, _ = self.v_backbone(inputs[sub == 0])
+        i_feat, _, _, _, _ = self.v_backbone(inputs[sub == 1])
+
+
         b, c, w, h = global_feat.shape
 
         # part_feat, attn = self.attn_pool(global_feat)
@@ -89,9 +100,9 @@ class Baseline(nn.Module):
             feats = self.bn_neck(feats, sub)
             return feats, feats
         else:
-            return self.train_forward(feats, labels, 0, sub, **kwargs)
+            return self.train_forward(feats, labels, 0, sub, v_feat, i_feat, **kwargs)
 
-    def train_forward(self, feat, labels, loss_dp, sub, **kwargs):
+    def train_forward(self, feat, labels, loss_dp, sub, v_feat, i_feat, **kwargs):
         metric = {}
 
         loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
@@ -121,12 +132,20 @@ class Baseline(nn.Module):
             logits_i_ = self.visible_classifier_(feat[sub == 1])
             logits_m_ = torch.cat([logits_v_, logits_i_], 0).float()
 
+        featVI = torch.cat([v_feat, i_feat], 0)
+        logits_vi = self.vi_classifier(featVI)
+        labelsVI = labels
+        labelsVI[sub == 0] = 2 * labels[sub == 0]
+        labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
+        loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
+
         loss_id += self.ce_loss_fn(logits_m, logits_m_.softmax(dim=1))
 
         metric.update({'id': loss_id.data})
         metric.update({'cs': loss_cs.data})
+        metric.update({'ceVI': loss_idVI.data})
         # metric.update({'dp': loss_dp.data})
 
-        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w
+        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_idVI
 
         return loss, metric
