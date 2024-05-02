@@ -118,15 +118,16 @@ class Baseline(nn.Module):
         # labelsVI[sub == 0] = 2 * labels[sub == 0]
         # labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
         loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
-        proj_inner = torch.mm(F.normalize(self.proj, 2, 0).t(), F.normalize(self.proj, 2, 0))
+        proj_norm = F.normalize(self.proj, 2, 0)
+        proj_inner = torch.mm(proj_norm.t(), proj_norm)
         eye_label = torch.eye(self.proj.shape[1], device=v_feat.device)
         loss_ortho = (proj_inner - eye_label).abs().sum(1).mean()
 
         feat = torch.mm(featA, self.proj.t())
-        proj_norm = F.normalize(self.proj, 2, 0)
         feat_related = torch.mm(featA, (eye_label - torch.mm(proj_norm, proj_norm.t())))
         loss_sim = self.mse_loss(feat_related[sub == 0], v_feat.detach()) + self.mse_loss(feat_related[sub == 1], i_feat.detach())
 
+        ort = (feat * feat_related).sum(1).abs().mean()
 
         loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
         feat = self.bn_neck(feat, sub)
@@ -163,6 +164,7 @@ class Baseline(nn.Module):
         metric.update({'ceVI': loss_idVI.data})
         metric.update({'pj': loss_ortho.data})
         metric.update({'sim': loss_sim.data})
+        metric.update({'or':  ort.data })
         # metric.update({'dp': loss_dp.data})
 
         loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_idVI + loss_ortho + loss_sim
