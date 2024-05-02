@@ -88,6 +88,8 @@ class Baseline(nn.Module):
 
         v_feat, _, _, _ = self.v_backbone(inputs[sub == 0])
         i_feat, _, _, _ = self.v_backbone(inputs[sub == 1])
+        v_feat = v_feat.mean(dim=(2, 3))
+        i_feat = i_feat.mean(dim=(2, 3))
 
 
         b, c, w, h = global_feat.shape
@@ -132,6 +134,8 @@ class Baseline(nn.Module):
             logits_i_ = self.visible_classifier_(feat[sub == 1])
             logits_m_ = torch.cat([logits_v_, logits_i_], 0).float()
 
+        v_feat = self.v_neck(v_feat)
+        i_feat = self.v_neck(i_feat)
         featVI = torch.cat([v_feat, i_feat], 0)
         logits_vi = self.vi_classifier(featVI)
         labelsVI = labels
