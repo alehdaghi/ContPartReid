@@ -124,7 +124,7 @@ class Baseline(nn.Module):
 
         feat = torch.mm(featA, self.proj.t())
         proj_norm = F.normalize(self.proj, 2, 0)
-        feat_related = torch.mm((eye_label - torch.mm(proj_norm, proj_norm.t())), featA)
+        feat_related = torch.mm(featA, (eye_label - torch.mm(proj_norm, proj_norm.t())))
         loss_sim = self.mse_loss(feat_related[sub == 0], v_feat.detach()) + self.mse_loss(feat_related[sub == 1], i_feat.detach())
 
 
