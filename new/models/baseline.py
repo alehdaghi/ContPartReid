@@ -118,12 +118,12 @@ class Baseline(nn.Module):
         # labelsVI[sub == 0] = 2 * labels[sub == 0]
         # labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
         loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
-        proj_inner = torch.mm(F.normalize(self.projs, 2, 0).t(), F.normalize(self.projs, 2, 0))
-        eye_label = torch.eye(self.projs.shape[1], device=v_feat.device)
+        proj_inner = torch.mm(F.normalize(self.proj, 2, 0).t(), F.normalize(self.proj, 2, 0))
+        eye_label = torch.eye(self.proj.shape[1], device=v_feat.device)
         loss_ortho = (proj_inner - eye_label).abs().sum(1).mean()
 
-        feat = torch.mm(featA, self.projs.t())
-        proj_norm = F.normalize(self.projs, 2, 0)
+        feat = torch.mm(featA, self.proj.t())
+        proj_norm = F.normalize(self.proj, 2, 0)
         feat_related = torch.mm((eye_label - torch.mm(proj_norm, proj_norm.t())), featA)
         loss_sim = self.mse_loss(feat_related[sub == 0], v_feat.detach()) + self.mse_loss(feat_related[sub == 1], i_feat.detach())
 
