@@ -48,6 +48,9 @@ class Baseline(nn.Module):
         self.vi_classifier = nn.Linear(D, 2 * num_classes, bias=False)
         self.v_neck = nn.BatchNorm1d(D)
         self.i_neck = nn.BatchNorm1d(D)
+        self.proj = nn.Parameter(torch.zeros([D, D], dtype=torch.float32, requires_grad=True))
+        nn.init.kaiming_normal_(self.proj, nonlinearity="linear")
+        self.mse_loss = nn.MSELoss()
 
         self.base_dim = D
         self.dim = D
@@ -104,8 +107,26 @@ class Baseline(nn.Module):
         else:
             return self.train_forward(feats, labels, 0, sub, v_feat, i_feat, **kwargs)
 
-    def train_forward(self, feat, labels, loss_dp, sub, v_feat, i_feat, **kwargs):
+    def train_forward(self, featA, labels, loss_dp, sub, v_feat, i_feat, **kwargs):
         metric = {}
+
+        v_feat = self.v_neck(v_feat)
+        i_feat = self.v_neck(i_feat)
+        featVI = torch.cat([v_feat, i_feat], 0)
+        logits_vi = self.vi_classifier(featVI)
+        labelsVI = torch.cat([2 * labels[sub == 0], 2 * labels[sub == 1] + 1], 0)
+        # labelsVI[sub == 0] = 2 * labels[sub == 0]
+        # labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
+        loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
+        proj_inner = torch.mm(F.normalize(self.projs, 2, 0).t(), F.normalize(self.projs, 2, 0))
+        eye_label = torch.eye(self.projs.shape[1], device=v_feat.device)
+        loss_ortho = (proj_inner - eye_label).abs().sum(1).mean()
+
+        feat = torch.mm(featA, self.projs.t())
+        proj_norm = F.normalize(self.projs, 2, 0)
+        feat_related = torch.mm((eye_label - torch.mm(proj_norm, proj_norm.t())), featA)
+        loss_sim = self.mse_loss(feat_related[sub == 0], v_feat.detach()) + self.mse_loss(feat_related[sub == 1], i_feat.detach())
+
 
         loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
         feat = self.bn_neck(feat, sub)
@@ -134,22 +155,16 @@ class Baseline(nn.Module):
             logits_i_ = self.visible_classifier_(feat[sub == 1])
             logits_m_ = torch.cat([logits_v_, logits_i_], 0).float()
 
-        v_feat = self.v_neck(v_feat)
-        i_feat = self.v_neck(i_feat)
-        featVI = torch.cat([v_feat, i_feat], 0)
-        logits_vi = self.vi_classifier(featVI)
-        labelsVI = torch.cat([2 * labels[sub == 0], 2 * labels[sub == 1] + 1], 0)
-        # labelsVI[sub == 0] = 2 * labels[sub == 0]
-        # labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
-        loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
 
         loss_id += self.ce_loss_fn(logits_m, logits_m_.softmax(dim=1))
 
         metric.update({'id': loss_id.data})
         metric.update({'cs': loss_cs.data})
         metric.update({'ceVI': loss_idVI.data})
+        metric.update({'pj': loss_ortho.data})
+        metric.update({'sim': loss_sim.data})
         # metric.update({'dp': loss_dp.data})
 
-        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_idVI
+        loss = loss_id + loss_cs * self.cs_w + loss_dp * self.dp_w + loss_idVI + loss_ortho + loss_sim
 
         return loss, metric
