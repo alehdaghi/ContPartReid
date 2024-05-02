@@ -138,9 +138,9 @@ class Baseline(nn.Module):
         i_feat = self.v_neck(i_feat)
         featVI = torch.cat([v_feat, i_feat], 0)
         logits_vi = self.vi_classifier(featVI)
-        labelsVI = labels
-        labelsVI[sub == 0] = 2 * labels[sub == 0]
-        labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
+        labelsVI = torch.cat([2 * labels[sub == 0], 2 * labels[sub == 1] + 1], 0)
+        # labelsVI[sub == 0] = 2 * labels[sub == 0]
+        # labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
         loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
 
         loss_id += self.ce_loss_fn(logits_m, logits_m_.softmax(dim=1))
