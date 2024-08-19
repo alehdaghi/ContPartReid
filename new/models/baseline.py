@@ -115,9 +115,8 @@ class Baseline(nn.Module):
     def train_forward(self, featA, labels, loss_dp, sub, v_feat, i_feat, **kwargs):
         metric = {}
 
-        v_feat = self.v_neck(v_feat)
-        i_feat = self.i_neck(i_feat)
-        feat = self.bn_neck(featA, sub)
+
+
 
         featVI = torch.cat([v_feat, i_feat], 0)
         logits_vi = self.vi_classifier(featVI)
@@ -127,14 +126,15 @@ class Baseline(nn.Module):
         loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
 
 
-        feats2 = torch.zeros_like(feat, device=feat.device)
-        feats2[sub == 0] = v_feat
-        feats2[sub == 1] = i_feat
+        feats1 = torch.cat([featA[sub == 0], featA[sub == 1]], 0)
 
-        loss_MI = estimate_MI(feat, feats2, self.mine)
+        loss_MI = estimate_MI(feats1.detach(), featVI, self.mine)
 
         loss_csVI, _, _ = self.cs_loss_fn(featVI.float(), labelsVI, self.k_size // 2)
-        loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
+        loss_cs, _, _ = self.cs_loss_fn(featA.float(), labels, self.k_size)
+        feat = self.bn_neck(featA, sub)
+        v_feat = self.v_neck(v_feat)
+        i_feat = self.i_neck(i_feat)
 
         logits = self.classifier(feat)
         loss_id = self.ce_loss_fn(logits.float(), labels)
