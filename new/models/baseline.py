@@ -127,7 +127,7 @@ class Baseline(nn.Module):
         loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
 
 
-        feats2 = torch.zeros_like(feat, device=feat.device, requires_grad=True)
+        feats2 = torch.zeros_like(feat, device=feat.device)
         feats2[sub == 0] = v_feat
         feats2[sub == 1] = i_feat
 
