@@ -44,8 +44,8 @@ class Baseline(nn.Module):
                                      modality_attention=modality_attention)
             D = 512
 
-        self.v_backbone = copy.deepcopy(self.backbone)
-        self.i_backbone = copy.deepcopy(self.backbone)
+        self.v_backbone = copy.deepcopy(self.backbone.layer4)
+        self.i_backbone = copy.deepcopy(self.backbone.layer4)
         self.vi_classifier = nn.Linear(D, 2 * num_classes, bias=False)
         self.v_neck = nn.BatchNorm1d(D)
         self.i_neck = nn.BatchNorm1d(D)
@@ -89,8 +89,8 @@ class Baseline(nn.Module):
         # CNN
         global_feat, x3, x2, x1 = self.backbone(inputs)
 
-        v_feat, _, _, _ = self.v_backbone(inputs[sub == 0])
-        i_feat, _, _, _ = self.i_backbone(inputs[sub == 1])
+        v_feat = self.v_backbone(x3[sub == 0].detach())
+        i_feat = self.i_backbone(x3[sub == 1].detach())
         v_feat = v_feat.mean(dim=(2, 3))
         i_feat = i_feat.mean(dim=(2, 3))
 
@@ -115,16 +115,8 @@ class Baseline(nn.Module):
     def train_forward(self, featA, labels, loss_dp, sub, v_feat, i_feat, **kwargs):
         metric = {}
 
-
-
-
-        featVI = torch.cat([v_feat, i_feat], 0)
-        logits_vi = self.vi_classifier(featVI)
         labelsVI = torch.cat([2 * labels[sub == 0], 2 * labels[sub == 1] + 1], 0)
-        # labelsVI[sub == 0] = 2 * labels[sub == 0]
-        # labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
-        loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
-
+        featVI = torch.cat([v_feat, i_feat], 0)
 
         feats1 = torch.cat([featA[sub == 0], featA[sub == 1]], 0)
 
@@ -132,17 +124,28 @@ class Baseline(nn.Module):
 
         loss_csVI, _, _ = self.cs_loss_fn(featVI.float(), labelsVI, self.k_size // 2)
         loss_cs, _, _ = self.cs_loss_fn(featA.float(), labels, self.k_size)
+
+        loss_ortho = F.cosine_similarity(feats1.detach(), featVI)
+
         feat = self.bn_neck(featA, sub)
         v_feat = self.v_neck(v_feat)
         i_feat = self.i_neck(i_feat)
+        featVI = torch.cat([v_feat, i_feat], 0)
+        logits_vi = self.vi_classifier(featVI)
+
+        # labelsVI[sub == 0] = 2 * labels[sub == 0]
+        # labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
+        loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
 
         logits = self.classifier(feat)
         loss_id = self.ce_loss_fn(logits.float(), labels)
         tmp = self.ce_loss_fn(logits.float(), labels)
         metric.update({'ce': tmp.data})
 
-        cam_ids = kwargs.get('cam_ids')
-        sub = (cam_ids == 3) + (cam_ids == 6)
+        # cam_ids = kwargs.get('cam_ids')
+        # sub = (cam_ids == 3) + (cam_ids == 6)
+
+
 
         logits_v = self.visible_classifier(feat[sub == 0])
         loss_id += self.ce_loss_fn(logits_v.float(), labels[sub == 0])
@@ -166,11 +169,11 @@ class Baseline(nn.Module):
         metric.update({'id': loss_id.data})
         metric.update({'cs': loss_cs.data})
         metric.update({'ceVI': loss_idVI.data})
-        # metric.update({'pj': loss_ortho.data})
+        metric.update({'or': loss_ortho.data})
         # metric.update({'sim': loss_sim.data})
         metric.update({'MI':  loss_MI.data })
         metric.update({'csVI': loss_csVI.data})
 
-        loss = loss_id + (loss_cs + loss_csVI) * self.cs_w + loss_dp * self.dp_w + loss_idVI + loss_MI #+ loss_ortho + 10 * loss_sim
+        loss = loss_id + (loss_cs + loss_csVI) * self.cs_w + loss_dp * self.dp_w + loss_idVI + loss_MI + loss_ortho #+ 10 * loss_sim
 
         return loss, metric
