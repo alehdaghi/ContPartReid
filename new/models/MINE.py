@@ -51,7 +51,7 @@ def sample_batch(feats1, feats2):
     joint = torch.cat([feats1, feats2], dim=1)
     marginal_index = torch.randperm(feats1.size(0))
     feats2_p = feats2[marginal_index]
-    marginal = torch.cat([feats1, feats2], dim=1)
+    marginal = torch.cat([feats1, feats2_p], dim=1)
     return joint, marginal
 
 def estimate_MI(feats1, feats2, mine_net):
