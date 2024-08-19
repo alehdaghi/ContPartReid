@@ -43,7 +43,7 @@ def learn_mine(joint, marginal, mine_net, ma_et=1.0, ma_rate=0.01):
     # unbiasing use moving average
     # loss = -(torch.mean(t) - (1 / ma_et.mean()).detach() * torch.mean(et))
     # use biased estimator
-    loss = -mi_lb
+    loss = mi_lb
 
     return loss, ma_et
 
