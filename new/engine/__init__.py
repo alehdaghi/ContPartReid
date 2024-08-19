@@ -191,9 +191,10 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
                 # eval_sysu(q_feats2, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatG2)
                 # eval_sysu(q_feats2, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatP2)
                 # eval_sysu(q_feats2, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatGA2)
-                eval_sysu(q_feats2, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismat)
 
-                mAP, r1, r5, _, _ = eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatA)
+                mAP, r1, r5, _, _ = eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=None)
+                eval_sysu(q_feats2, q_ids, q_cams, g_feats2, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=None)
+
             elif dataset == 'regdb':
                 print('infrared to visible')
                 mAP, r1, r5, _, _ = eval_regdb(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, aim=False)

@@ -102,8 +102,14 @@ class Baseline(nn.Module):
         feats = global_feat
 
         if not self.training:
-            feats2 = torch.mm(feats, self.proj.t())
-            feats2 = self.bn_neck(feats2, sub)
+
+            proj_norm = F.normalize(self.proj, 2, 0)
+            proj_inner = torch.mm(proj_norm.t(), proj_norm)
+            eye_label = torch.eye(self.proj.shape[1], device=v_feat.device)
+            feat2 = torch.mm(feats, self.proj.t())
+            feat_related = torch.mm(feats, (eye_label - torch.mm(proj_norm, proj_norm.t())))
+            feats2 = self.bn_neck(feat2, sub)
+
             return feats2, feats
         else:
             return self.train_forward(feats, labels, 0, sub, v_feat, i_feat, **kwargs)
@@ -113,28 +119,24 @@ class Baseline(nn.Module):
 
         v_feat = self.v_neck(v_feat)
         i_feat = self.i_neck(i_feat)
+        feat = self.bn_neck(featA, sub)
+
         featVI = torch.cat([v_feat, i_feat], 0)
         logits_vi = self.vi_classifier(featVI)
         labelsVI = torch.cat([2 * labels[sub == 0], 2 * labels[sub == 1] + 1], 0)
         # labelsVI[sub == 0] = 2 * labels[sub == 0]
         # labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
         loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
-        proj_norm = F.normalize(self.proj, 2, 0)
-        proj_inner = torch.mm(proj_norm.t(), proj_norm)
-        eye_label = torch.eye(self.proj.shape[1], device=v_feat.device)
-        loss_ortho = (proj_inner - eye_label).abs().sum(1).mean()
+        # proj_norm = F.normalize(self.proj, 2, 0)
+        # proj_inner = torch.mm(proj_norm.t(), proj_norm)
+        # eye_label = torch.eye(self.proj.shape[1], device=v_feat.device)
+        # loss_ortho = (proj_inner - eye_label).abs().sum(1).mean()
 
-        feat = featA
-        feat2 = torch.mm(featA, self.proj.t())
-        feat_related = torch.mm(featA, (eye_label - torch.mm(proj_norm, proj_norm.t())))
-        loss_sim = self.mse_loss(feat_related[sub == 0].detach(), v_feat) + self.mse_loss(feat_related[sub == 1].detach(), i_feat)
 
-        ort = (feat2 * feat_related).sum(1).abs().mean()
+        ort = (feat[sub == 0].detach() * v_feat).sum(1).abs().mean() + (feat[sub == 1].detach() * i_feat).sum(1).abs().mean()
 
         loss_csVI, _, _ = self.cs_loss_fn(featVI.float(), labelsVI, self.k_size // 2)
         loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
-
-        feat = self.bn_neck(feat2, sub)
 
         logits = self.classifier(feat)
         loss_id = self.ce_loss_fn(logits.float(), labels)
@@ -166,11 +168,11 @@ class Baseline(nn.Module):
         metric.update({'id': loss_id.data})
         metric.update({'cs': loss_cs.data})
         metric.update({'ceVI': loss_idVI.data})
-        metric.update({'pj': loss_ortho.data})
-        metric.update({'sim': loss_sim.data})
+        # metric.update({'pj': loss_ortho.data})
+        # metric.update({'sim': loss_sim.data})
         metric.update({'or':  ort.data })
         metric.update({'csVI': loss_csVI.data})
 
-        loss = loss_id + (loss_cs + loss_csVI) * self.cs_w + loss_dp * self.dp_w + loss_idVI + loss_ortho + loss_sim
+        loss = loss_id + (loss_cs + loss_csVI) * self.cs_w + loss_dp * self.dp_w + loss_idVI + ort #+ loss_ortho + 10 * loss_sim
 
         return loss, metric
