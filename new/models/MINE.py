@@ -32,7 +32,7 @@ def mutual_information(joint, marginal, mine_net):
     return mi_lb, t, et
 
 
-def learn_mine(joint, marginal, mine_net, mine_net_optim, ma_et, ma_rate=0.01):
+def learn_mine(joint, marginal, mine_net, ma_et=1.0, ma_rate=0.01):
     # batch is a tuple of (joint, marginal)
     device = joint.device
     joint = torch.autograd.Variable(torch.FloatTensor(joint)).to(device)
@@ -41,11 +41,19 @@ def learn_mine(joint, marginal, mine_net, mine_net_optim, ma_et, ma_rate=0.01):
     ma_et = (1 - ma_rate) * ma_et + ma_rate * torch.mean(et)
 
     # unbiasing use moving average
-    loss = -(torch.mean(t) - (1 / ma_et.mean()).detach() * torch.mean(et))
+    # loss = -(torch.mean(t) - (1 / ma_et.mean()).detach() * torch.mean(et))
     # use biased estimator
-    #     loss = - mi_lb
+    loss = mi_lb
 
-    mine_net_optim.zero_grad()
-    autograd.backward(loss)
-    mine_net_optim.step()
-    return mi_lb, ma_et
+    return loss, ma_et
+
+def sample_batch(feats1, feats2):
+    joint = torch.cat([feats1, feats2], dim=1)
+    marginal_index = torch.randperm(feats1.size(0))
+    feats2_p = feats2[marginal_index]
+    marginal = torch.cat([feats1, feats2], dim=1)
+    return joint, marginal
+
+def estimate_MI(feats1, feats2, mine_net):
+    joint, marginal = sample_batch(feats1, feats2)
+    return learn_mine(joint, marginal, mine_net)[0]

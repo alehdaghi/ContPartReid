@@ -7,6 +7,7 @@ from torch.nn import functional as F
 from torch.nn import Parameter
 import numpy as np
 
+from models.MINE import Mine, estimate_MI
 from models.resnet import resnet50, resnet18
 from part.losses import contrastive_loss, CPMLoss
 from part.part_model import PartModel, DEE_module, PRM_module
@@ -48,8 +49,7 @@ class Baseline(nn.Module):
         self.vi_classifier = nn.Linear(D, 2 * num_classes, bias=False)
         self.v_neck = nn.BatchNorm1d(D)
         self.i_neck = nn.BatchNorm1d(D)
-        self.proj = nn.Parameter(torch.zeros([D, D], dtype=torch.float32, requires_grad=True))
-        nn.init.kaiming_normal_(self.proj, nonlinearity="linear")
+        self.mine = Mine(input_size=2 * D, hidden_size=1024)
         self.mse_loss = nn.MSELoss()
 
         self.base_dim = D
@@ -102,15 +102,13 @@ class Baseline(nn.Module):
         feats = global_feat
 
         if not self.training:
-
-            proj_norm = F.normalize(self.proj, 2, 0)
-            proj_inner = torch.mm(proj_norm.t(), proj_norm)
-            eye_label = torch.eye(self.proj.shape[1], device=v_feat.device)
-            feat2 = torch.mm(feats, self.proj.t())
-            feat_related = torch.mm(feats, (eye_label - torch.mm(proj_norm, proj_norm.t())))
-            feats2 = self.bn_neck(feat2, sub)
-
-            return feats2, feats
+            feats = self.bn_neck(feats, sub)
+            feats2 = torch.zeros_like(feats, device=feats.device)
+            v_feat = self.v_neck(v_feat)
+            i_feat = self.i_neck(i_feat)
+            feats2[sub == 0] = v_feat
+            feats2[sub == 1] = i_feat
+            return feats, feats2
         else:
             return self.train_forward(feats, labels, 0, sub, v_feat, i_feat, **kwargs)
 
@@ -127,13 +125,13 @@ class Baseline(nn.Module):
         # labelsVI[sub == 0] = 2 * labels[sub == 0]
         # labelsVI[sub == 1] = 2 * labels[sub == 1] + 1
         loss_idVI = self.ce_loss_fn(logits_vi.float(), labelsVI)
-        # proj_norm = F.normalize(self.proj, 2, 0)
-        # proj_inner = torch.mm(proj_norm.t(), proj_norm)
-        # eye_label = torch.eye(self.proj.shape[1], device=v_feat.device)
-        # loss_ortho = (proj_inner - eye_label).abs().sum(1).mean()
 
 
-        ort = (feat[sub == 0].detach() * v_feat).sum(1).abs().mean() + (feat[sub == 1].detach() * i_feat).sum(1).abs().mean()
+        feats2 = torch.zeros_like(feat, device=feat.device, requires_grad=True)
+        feats2[sub == 0] = v_feat
+        feats2[sub == 1] = i_feat
+
+        loss_MI = estimate_MI(feat, feats2, self.mine)
 
         loss_csVI, _, _ = self.cs_loss_fn(featVI.float(), labelsVI, self.k_size // 2)
         loss_cs, _, _ = self.cs_loss_fn(feat.float(), labels, self.k_size)
@@ -170,9 +168,9 @@ class Baseline(nn.Module):
         metric.update({'ceVI': loss_idVI.data})
         # metric.update({'pj': loss_ortho.data})
         # metric.update({'sim': loss_sim.data})
-        metric.update({'or':  ort.data })
+        metric.update({'MI':  loss_MI.data })
         metric.update({'csVI': loss_csVI.data})
 
-        loss = loss_id + (loss_cs + loss_csVI) * self.cs_w + loss_dp * self.dp_w + loss_idVI + ort #+ loss_ortho + 10 * loss_sim
+        loss = loss_id + (loss_cs + loss_csVI) * self.cs_w + loss_dp * self.dp_w + loss_idVI + loss_MI #+ loss_ortho + 10 * loss_sim
 
         return loss, metric
