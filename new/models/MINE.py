@@ -35,8 +35,8 @@ def mutual_information(joint, marginal, mine_net):
 def learn_mine(joint, marginal, mine_net, ma_et=1.0, ma_rate=0.01):
     # batch is a tuple of (joint, marginal)
     device = joint.device
-    joint = torch.autograd.Variable(torch.FloatTensor(joint)).to(device)
-    marginal = torch.autograd.Variable(torch.FloatTensor(marginal)).to(device)
+    # joint = torch.autograd.Variable(torch.FloatTensor(joint)).to(device)
+    # marginal = torch.autograd.Variable(torch.FloatTensor(marginal)).to(device)
     mi_lb, t, et = mutual_information(joint, marginal, mine_net)
     ma_et = (1 - ma_rate) * ma_et + ma_rate * torch.mean(et)
 
