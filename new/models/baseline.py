@@ -125,7 +125,7 @@ class Baseline(nn.Module):
         loss_csVI, _, _ = self.cs_loss_fn(featVI.float(), labelsVI, self.k_size // 2)
         loss_cs, _, _ = self.cs_loss_fn(featA.float(), labels, self.k_size)
 
-        loss_ortho = F.cosine_similarity(feats1.detach(), featVI)
+        loss_ortho = F.cosine_similarity(feats1.detach(), featVI).mean()
 
         feat = self.bn_neck(featA, sub)
         v_feat = self.v_neck(v_feat)
