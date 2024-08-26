@@ -1,28 +1,15 @@
 import copy
-import math
 import torch
 import torch.nn as nn
-from torch.nn import init
 from torch.nn import functional as F
-from torch.nn import Parameter
-import numpy as np
 
 from models.MINE import Mine, estimate_MI
 from models.resnet import resnet50, resnet18
-from part.losses import contrastive_loss, CPMLoss
-from part.part_model import PartModel, DEE_module, PRM_module
-from part.transformer import SimpleViT
-from utils.calc_acc import calc_acc
 
-from layers import TripletLoss
 from layers import CSLoss
-from layers import CenterLoss
-from layers import cbam
-from layers import NonLocalBlockND
 from layers import DualBNNeck
-from layers.module.part_pooling import TransformerPool, SAFL
-from part import part_model
-import einops
+from models.revgrad import RevGradF
+ReverseGrad = RevGradF.apply
 
 
 class Baseline(nn.Module):
@@ -83,14 +70,18 @@ class Baseline(nn.Module):
         self.ce_loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
         self.cs_loss_fn = CSLoss(k_size=self.k_size, margin1=self.margin1, margin2=self.margin2)
 
+        self._alpha = torch.tensor(0.4, requires_grad=False)
+
     def forward(self, inputs, labels=None, **kwargs):
         cam_ids = kwargs.get('cam_ids')
         sub = (cam_ids == 3) + (cam_ids == 6)
         # CNN
         global_feat, x3, x2, x1 = self.backbone(inputs)
 
-        v_feat = self.v_backbone(x3[sub == 0].detach())
-        i_feat = self.i_backbone(x3[sub == 1].detach())
+        # v_feat = self.v_backbone(x3[sub == 0].detach()) #detach grad
+        # i_feat = self.i_backbone(x3[sub == 1].detach()) #detach grad
+        v_feat = self.v_backbone(ReverseGrad(x3[sub == 0], self._alpha)) #reverse grad
+        i_feat = self.i_backbone(ReverseGrad(x3[sub == 1], self._alpha)) #reverse grad
         v_feat = v_feat.mean(dim=(2, 3))
         i_feat = i_feat.mean(dim=(2, 3))
 
@@ -120,7 +111,7 @@ class Baseline(nn.Module):
 
         feats1 = torch.cat([featA[sub == 0], featA[sub == 1]], 0)
 
-        loss_MI = estimate_MI(feats1.detach(), featVI, self.mine)
+        loss_MI = 0 #estimate_MI(feats1.detach(), featVI, self.mine)
 
         loss_csVI, _, _ = self.cs_loss_fn(featVI.float(), labelsVI, self.k_size // 2)
         loss_cs, _, _ = self.cs_loss_fn(featA.float(), labels, self.k_size)
@@ -171,7 +162,7 @@ class Baseline(nn.Module):
         metric.update({'ceVI': loss_idVI.data})
         metric.update({'or': loss_ortho.data})
         # metric.update({'sim': loss_sim.data})
-        metric.update({'MI':  loss_MI.data })
+        # metric.update({'MI':  loss_MI.data })
         metric.update({'csVI': loss_csVI.data})
 
         loss = loss_id + (loss_cs + loss_csVI) * self.cs_w + loss_dp * self.dp_w + loss_idVI + loss_MI + loss_ortho #+ 10 * loss_sim

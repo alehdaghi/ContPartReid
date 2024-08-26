@@ -36,8 +36,8 @@ modality_attention: 2
 # optimizer
 lr: 0.00035
 optimizer: adam
-num_epoch: 160
-lr_step: [80, 120]
+num_epoch: 360
+lr_step: [80, 120, 200]
 
 # augmentation
 random_flip: true
