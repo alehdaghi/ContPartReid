@@ -111,3 +111,32 @@ def get_test_loader(dataset, root, batch_size, image_size, num_workers=4, split_
                                 num_workers=num_workers)
 
     return gallery_loader, query_loader
+
+
+def get_train_simple_loader(dataset, root, batch_size, image_size, num_workers=4, split_num='4'):
+    # transform
+    transform = T.Compose([
+        T.Resize(image_size),
+        T.ToTensor(),
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    # dataset
+    if dataset == 'sysu':
+        train_dataset = SYSUDataset(root, mode='train', transform=transform)
+    elif dataset == 'regdb':
+        train_dataset = RegDBDataset(root, mode='train', transform=transform, split_num=split_num)
+    elif dataset == 'market':
+        train_dataset = MarketDataset(root, mode='train', transform=transform)
+
+    # dataloader
+    query_loader = DataLoader(dataset=train_dataset,
+                              batch_size=batch_size,
+                              shuffle=False,
+                              pin_memory=True,
+                              drop_last=False,
+                              collate_fn=collate_fn,
+                              num_workers=num_workers)
+
+
+    return query_loader

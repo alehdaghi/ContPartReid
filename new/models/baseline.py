@@ -70,7 +70,7 @@ class Baseline(nn.Module):
         self.ce_loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
         self.cs_loss_fn = CSLoss(k_size=self.k_size, margin1=self.margin1, margin2=self.margin2)
 
-        self._alpha = torch.tensor(0.4, requires_grad=False)
+        self._alpha = torch.tensor(0.7, requires_grad=False)
 
     def forward(self, inputs, labels=None, **kwargs):
         cam_ids = kwargs.get('cam_ids')
@@ -165,6 +165,6 @@ class Baseline(nn.Module):
         # metric.update({'MI':  loss_MI.data })
         metric.update({'csVI': loss_csVI.data})
 
-        loss = loss_id + (loss_cs + loss_csVI) * self.cs_w + loss_dp * self.dp_w + loss_idVI + loss_MI + loss_ortho #+ 10 * loss_sim
+        loss = loss_id + (loss_cs + loss_csVI) * self.cs_w + loss_dp * self.dp_w + loss_idVI + loss_MI #+ loss_ortho #+ 10 * loss_sim
 
         return loss, metric
