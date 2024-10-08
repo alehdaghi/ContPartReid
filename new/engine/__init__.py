@@ -173,6 +173,8 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
                 # dismatG = pairwise_distance(F.normalize(q_feats[:, -2048:],dim=1), F.normalize(g_feats[:, -2048:],dim=1))
                 # dismatP = pairwise_distance(F.normalize(q_feats[:, :-2048],dim=1), F.normalize(g_feats[:, :-2048],dim=1))
                 dismatA = pairwise_distance(F.normalize(q_feats,dim=1), F.normalize(g_feats,dim=1))
+                dismatB = pairwise_distance(F.normalize(q_feats2, dim=1), F.normalize(g_feats2, dim=1))
+
                 # dismatGA = dismatG + dismatP
                 #
                 # dismatG2 = pairwise_distance(F.normalize(q_feats2[:, -2048:], dim=1),
@@ -181,9 +183,17 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
                 #                             F.normalize(g_feats2[:, :-2048], dim=1))
                 # dismatA2 = pairwise_distance(F.normalize(q_feats2, dim=1), F.normalize(g_feats2, dim=1))
                 # dismatGA2 = dismatG + dismatP
+                q_inf = np.in1d(q_cams, [3, 6])
+                q_vis = ~np.in1d(q_cams, [3, 6])
 
-                dismat = dismatA #+ dismatA + dismatA2 + dismatGA2
+                g_inf = np.in1d(g_cams, [3, 6])
+                g_vis = ~np.in1d(g_cams, [3, 6])
 
+                mask = torch.from_numpy(q_inf[:, None] * g_inf[None, :]).float()
+
+                dismatS = dismatA + dismatB#+ dismatA + dismatA2 + dismatGA2
+
+                dismat = (1 - mask) * dismatA + 0.7 * mask * dismatB
                 # eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatG)
                 # eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatP)
                 # eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatGA)
@@ -191,9 +201,22 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
                 # eval_sysu(q_feats2, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatG2)
                 # eval_sysu(q_feats2, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatP2)
                 # eval_sysu(q_feats2, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatGA2)
+                Q = torch.zeros((q_feats.shape[0], q_feats.shape[1] * 3))
+                G = torch.zeros((g_feats.shape[0], g_feats.shape[1] * 3))
+                Q[:, 0:2048] = q_feats2
+                Q[:, 2048:2*2048] = q_feats
+
+                G[g_inf, 0:2048] = g_feats2[g_inf]
+                G[:, 2048:2 * 2048] = g_feats
+                G[g_vis, 2 * 2048: ] = g_feats2[g_vis]
+                M = pairwise_distance(F.normalize(Q, dim=1), F.normalize(G, dim=1))
 
                 mAP, r1, r5, _, _ = eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=None)
                 eval_sysu(q_feats2, q_ids, q_cams, g_feats2, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=None)
+                eval_sysu(q_feats2, q_ids, q_cams, g_feats2, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1,
+                          aim=False, dist_matAll=dismatS)
+                eval_sysu(q_feats2, q_ids, q_cams, g_feats2, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1,
+                          aim=False, dist_matAll=dismat)
 
             elif dataset == 'regdb':
                 print('infrared to visible')
