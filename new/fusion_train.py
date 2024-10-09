@@ -120,7 +120,6 @@ def train(cfg):
     F_e = torch.load(save_dir + '/feat_e.pt').to(device)
     Y = torch.load(save_dir + '/y.pt').to(device)
     C = torch.load(save_dir + '/c.pt').to(device)
-    M = ((C == 3) + (C == 6)) .to(device)
 
 
     proj1, proj2 = torch.nn.Linear(2048,2048).to(device),torch.nn.Linear(2048,2048).to(device)
@@ -129,11 +128,12 @@ def train(cfg):
 
     batch = 5000
     N = len(M) // batch
+
     Mask = {}
     Y_u = Y.unique()
     for id in Y_u:
-        Mask[id.item()] = (Y==id)
-    Mask2 ={True: M, False: ~M}
+        Mask[id] = (Y==id)
+    Mask2 ={0: M == 0}
     for e in range(100):
         print(f'epoch: {e}')
         for i in tqdm(range(N), total=N, desc='Collecting feats', ncols=0):
@@ -149,19 +149,13 @@ def train(cfg):
             dist_r = -pairwise_distance(q_r, f_r.detach())
             loss = 0
             for j in range(batch):
-                p_min = min(dist_e[i][ Mask[q_y[j].item()]].mean(), dist_r[i][( Mask[q_y[j].item()]) & (Mask2[q_m[j].item()])].mean())
-                n_max = max(dist_e[i][~Mask[q_y[j].item()]].mean(), dist_r[i][(~Mask[q_y[j].item()]) & (Mask2[q_m[j].item()])].mean())
                 loss = loss + max(0, (0.7 - p_min + n_max))
             loss = loss / batch
             print(f'epoch: {e} loss: {loss}')
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        torch.save(proj1.state_dict(), f'{save_dir}/proj1.pt')
-        torch.save(proj2.state_dict(), f'{save_dir}/proj2.pt')
 
-    torch.save(proj1.state_dict(), f'{save_dir}/proj1.pt')
-    torch.save(proj2.state_dict(), f'{save_dir}/proj2.pt')
     test(model, proj1, proj2)
 
 

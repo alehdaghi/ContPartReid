@@ -64,8 +64,9 @@ def get_cmc(sorted_indices, query_ids, query_cam_ids, gallery_ids, gallery_cam_i
         match_i = np.equal(result_i_unique, query_ids[probe_index])
 
         if np.sum(match_i) != 0:  # if there is true matching in gallery
-            valid_probe_sample_count += 1
-            match_counter += match_i
+            if match_i.shape[0] == match_counter.shape[0]:
+                valid_probe_sample_count += 1
+                match_counter += match_i
 
     rank = match_counter / valid_probe_sample_count
     cmc = np.cumsum(rank)
@@ -106,10 +107,10 @@ def eval_sysu(query_feats, query_ids, query_cam_ids, gallery_feats, gallery_ids,
               perm, mode='all', num_shots=1, num_trials=10, aim=True, k1=30, k2=6, dist_matAll=None):
     assert mode in ['indoor', 'all']
 
-    gallery_cams = [1, 2] if mode == 'indoor' else [1, 2, 4, 5]
+    gallery_cams = np.unique(gallery_cam_ids) #[1, 2] if mode == 'indoor' else [1, 2, 4, 5]
 
     # cam2 and cam3 are in the same location
-    query_cam_ids[np.equal(query_cam_ids, 3)] = 2
+    # query_cam_ids[np.equal(query_cam_ids, 3)] = 2
     query_feats = F.normalize(query_feats, dim=1)
 
     gallery_indices = np.in1d(gallery_cam_ids, gallery_cams)

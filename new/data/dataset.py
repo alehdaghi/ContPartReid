@@ -35,7 +35,7 @@ class SYSUDataset(Dataset):
         img_paths = [path for path in img_paths if int(path.split('/')[-2]) in selected_ids]
 
         if mode == 'gallery':
-            img_paths = [path for path in img_paths if int(path.split('/')[-3][-1]) in (1, 2, 4, 5)]
+            img_paths = [path for path in img_paths if int(path.split('/')[-3][-1]) in (1, 2, 3, 4, 5, 6)]
         elif mode == 'query':
             img_paths = [path for path in img_paths if int(path.split('/')[-3][-1]) in (3, 6)]
 
