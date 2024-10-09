@@ -6,7 +6,7 @@ dataset_cfg = CfgNode()
 dataset_cfg.sysu = CfgNode()
 dataset_cfg.sysu.num_id = 395
 dataset_cfg.sysu.num_cam = 6
-dataset_cfg.sysu.data_root = "../../Datasets/SYSU-MM01"
+dataset_cfg.sysu.data_root = "/export/datasets/public/PersonReID/SYSU-MM01"
 
 dataset_cfg.regdb = CfgNode()
 dataset_cfg.regdb.num_id = 206
