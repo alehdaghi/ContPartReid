@@ -17,6 +17,7 @@ class Baseline(nn.Module):
                  modality_attention=0, mutual_learning=False, **kwargs):
         super(Baseline, self).__init__()
 
+        # From SAAI
         self.drop_last_stride = drop_last_stride
         self.pattern_attention = pattern_attention
         self.modality_attention = modality_attention
@@ -31,6 +32,7 @@ class Baseline(nn.Module):
                                      modality_attention=modality_attention)
             D = 512
 
+        # Ours
         self.v_backbone = copy.deepcopy(self.backbone.layer4)
         self.i_backbone = copy.deepcopy(self.backbone.layer4)
         self.vi_classifier = nn.Linear(D, 2 * num_classes, bias=False)
@@ -39,6 +41,7 @@ class Baseline(nn.Module):
         self.mine = Mine(input_size=2 * D, hidden_size=1024)
         self.mse_loss = nn.MSELoss()
 
+        # From SAAI
         self.base_dim = D
         self.dim = D
         self.k_size = kwargs.get('k_size', 8)
@@ -49,6 +52,7 @@ class Baseline(nn.Module):
         self.margin1 = kwargs.get('margin1', 0.01)
         self.margin2 = kwargs.get('margin2', 0.7)
 
+        # From SAAI
         # self.attn_pool = SAFL(part_num=self.part_num)
         self.bn_neck = DualBNNeck(self.base_dim + self.dim * self.part_num)
 
@@ -70,9 +74,11 @@ class Baseline(nn.Module):
         self.ce_loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
         self.cs_loss_fn = CSLoss(k_size=self.k_size, margin1=self.margin1, margin2=self.margin2)
 
+        # Ours
         self._alpha = torch.tensor(0.7, requires_grad=False)
 
     def forward(self, inputs, labels=None, **kwargs):
+        breakpoint()
         cam_ids = kwargs.get('cam_ids')
         sub = (cam_ids == 3) + (cam_ids == 6)
         # CNN
@@ -105,7 +111,7 @@ class Baseline(nn.Module):
 
     def train_forward(self, featA, labels, loss_dp, sub, v_feat, i_feat, **kwargs):
         metric = {}
-
+        breakpoint()
         labelsVI = torch.cat([2 * labels[sub == 0], 2 * labels[sub == 1] + 1], 0)
         featVI = torch.cat([v_feat, i_feat], 0)
 
