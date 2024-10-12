@@ -168,6 +168,7 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
             #     writer.add_scalar("mmd/t", t, epoch)
 
             if dataset == 'sysu':
+                #breakpoint()
                 perm = sio.loadmat(os.path.join(dataset_cfg.sysu.data_root, 'exp', 'rand_perm_cam.mat'))[
                     'rand_perm_cam']
                 # dismatG = pairwise_distance(F.normalize(q_feats[:, -2048:],dim=1), F.normalize(g_feats[:, -2048:],dim=1))
@@ -203,12 +204,13 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
                 # eval_sysu(q_feats2, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatGA2)
                 Q = torch.zeros((q_feats.shape[0], q_feats.shape[1] * 3))
                 G = torch.zeros((g_feats.shape[0], g_feats.shape[1] * 3))
-                Q[:, 0:2048] = q_feats2
-                Q[:, 2048:2*2048] = q_feats
+                breakpoint()
+                Q[:, 0:q_feats.shape[1]] = q_feats2
+                Q[:, q_feats.shape[1]:2*q_feats.shape[1]] = q_feats
 
-                G[g_inf, 0:2048] = g_feats2[g_inf]
-                G[:, 2048:2 * 2048] = g_feats
-                G[g_vis, 2 * 2048: ] = g_feats2[g_vis]
+                G[g_inf, 0:g_feats.shape[1]] = g_feats2[g_inf]
+                G[:, g_feats.shape[1]:2 * g_feats.shape[1]] = g_feats
+                G[g_vis, 2 * g_feats.shape[1]: ] = g_feats2[g_vis]
                 M = pairwise_distance(F.normalize(Q, dim=1), F.normalize(G, dim=1))
 
                 mAP, r1, r5, _, _ = eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=None)

@@ -1,4 +1,5 @@
 import torch
+import copy
 import numpy as np
 
 # from apex import amp
@@ -51,6 +52,7 @@ def create_eval_engine(model, non_blocking=False):
 
         with no_grad():
             feat, feat2 = model(data, cam_ids=cam_ids.to(device, non_blocking=non_blocking))
+            if feat2 is None: feat2 = copy.deepcopy(feat)
 
         return feat.data.float().cpu(), labels, cam_ids, np.array(img_paths), feat2.data.float().cpu()
 

@@ -51,3 +51,10 @@ class SAFL(nn.Module):
         x = attn @ x / H / W
 
         return x.view(B, -1), attn
+
+    def viforward(self, feat, attn):
+        B, C, H, W = feat.shape
+        feat = feat.view(B, C, -1).permute(0, 2, 1) # [B, HW, C]
+        feat = attn.detach() @ feat / H / W
+        feat = feat.view(B, -1)
+        return feat.view(B, -1)
