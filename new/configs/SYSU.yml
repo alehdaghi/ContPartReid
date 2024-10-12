@@ -5,7 +5,7 @@ rerank: false
 
 # dataset
 sample_method: identity_random
-image_size: (384, 144)
+image_size: (288, 144) # (384, 144) for cpr, (288, 144) for everything else
 p_size: 10
 k_size: 8
 
