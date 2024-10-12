@@ -10,7 +10,7 @@ from torch import optim
 from data import get_test_loader
 from data import get_train_loader
 from engine import get_trainer
-from models.baseline import Baseline
+from models.baseline import Baseline, SAAI, SAAI_CPR
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -56,7 +56,7 @@ def train(cfg):
                                                    num_workers=4)
 
     # model
-    model = Baseline(num_classes=cfg.num_id,
+    model = SAAI(num_classes=cfg.num_id,
                      backbone=cfg.backbone,
                      pattern_attention=cfg.pattern_attention,
                      modality_attention=cfg.modality_attention,
