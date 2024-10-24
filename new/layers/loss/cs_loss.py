@@ -9,7 +9,8 @@ class CSLoss(nn.Module):
         self.k_size = k_size
         self.ranking_loss = nn.MarginRankingLoss(margin=margin2)
 
-    def forward(self, inputs, targets, k_size):
+    def forward(self, inputs, targets):
+
         n = inputs.size(0)
 
         # Come to centers
@@ -32,7 +33,7 @@ class CSLoss(nn.Module):
         # For each anchor, find the hardest positive and negative
         mask = targets.expand(n, n).eq(targets.expand(n, n).t())
         dist_an, dist_ap = [], []
-        for i in range(0, n, k_size):
+        for i in range(0, n, self.k_size):
             dist_an.append( (self.margin2 - dist[i][mask[i] == 0]).clamp(min=0.0).mean() )
         dist_an = torch.stack(dist_an)
 

@@ -192,7 +192,7 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
 
                 mask = torch.from_numpy(q_inf[:, None] * g_inf[None, :]).float()
 
-                dismatS = dismatA + dismatB#+ dismatA + dismatA2 + dismatGA2
+                dismatS = dismatA + 0.7*mask*dismatB#+ dismatA + dismatA2 + dismatGA2
 
                 dismat = (1 - mask) * dismatA + 0.7 * mask * dismatB
                 # eval_sysu(q_feats, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatG)
