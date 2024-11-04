@@ -204,7 +204,7 @@ def get_trainer(dataset, model, optimizer, lr_scheduler=None, logger=None, write
                 # eval_sysu(q_feats2, q_ids, q_cams, g_feats, g_ids, g_cams, g_img_paths, perm, mode='all', num_shots=1, aim=False, dist_matAll=dismatGA2)
                 Q = torch.zeros((q_feats.shape[0], q_feats.shape[1] * 3))
                 G = torch.zeros((g_feats.shape[0], g_feats.shape[1] * 3))
-                breakpoint()
+                #breakpoint()
                 Q[:, 0:q_feats.shape[1]] = q_feats2
                 Q[:, q_feats.shape[1]:2*q_feats.shape[1]] = q_feats
 
