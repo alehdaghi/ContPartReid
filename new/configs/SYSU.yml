@@ -5,7 +5,7 @@ rerank: false
 
 # dataset
 sample_method: identity_random
-image_size: (288, 144) # (384, 144) for cpr, (288, 144) for everything else
+image_size: (224, 224) # (384, 144) for cpr, (288, 144) for everything else
 p_size: 10
 k_size: 8
 
@@ -36,7 +36,7 @@ modality_attention: 2
 # optimizer
 lr: 0.00035
 optimizer: adam
-num_epoch: 360
+num_epoch: 360 #360
 lr_step: [40, 80, 120, 200]
 
 # augmentation
