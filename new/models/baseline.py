@@ -5,6 +5,7 @@ from torch.nn import functional as F
 
 from models.MINE import Mine, estimate_MI
 from models.resnet import resnet50, resnet18
+from models.vision_transformer import vit_b_16
 
 from layers import CSLoss
 from layers import DualBNNeck
@@ -25,12 +26,18 @@ class Baseline(nn.Module):
         if backbone == "resnet50":
             self.backbone = resnet50(pretrained=True, drop_last_stride=drop_last_stride,
                                      modality_attention=modality_attention)
+            last_layer = self.backbone.layer4
             D = 2048
         elif backbone == "resnet18":
             self.backbone = resnet18(pretrained=True, drop_last_stride=drop_last_stride,
                                      modality_attention=modality_attention)
+            last_layer = self.backbone.layer4
             D = 512
-
+        elif backbone == "vit_b_16":
+            self.backbone = vit_b_16(weights=backbone, progress=True)
+            last_layer = self.backbone.encoder.layers.encoder_layer_11
+            D = 768
+        #breakpoint()
         # self.v_backbone = copy.deepcopy(self.backbone.layer4)
         # self.i_backbone = copy.deepcopy(self.backbone.layer4)
         # self.vi_classifier = nn.Linear(D, 2 * num_classes, bias=False)
@@ -72,8 +79,8 @@ class Baseline(nn.Module):
 
 
         # MiX2:
-        self.v_backbone = copy.deepcopy(self.backbone.layer4)
-        self.i_backbone = copy.deepcopy(self.backbone.layer4)
+        self.v_backbone = copy.deepcopy(last_layer)
+        self.i_backbone = copy.deepcopy(last_layer)
         self.vi_classifier = nn.Linear(self.base_dim + self.dim * self.part_num, 2 * num_classes, bias=False)
         self.v_neck = nn.BatchNorm1d(self.base_dim + self.dim * self.part_num)
         self.i_neck = nn.BatchNorm1d(self.base_dim + self.dim * self.part_num)
@@ -88,28 +95,38 @@ class Baseline(nn.Module):
         sub = (cam_ids == 3) + (cam_ids == 6)
         # CNN
         global_feat, x3, x2, x1 = self.backbone(inputs)
-
-        v_feat = self.v_backbone(x3[sub == 0].detach()) #detach grad
-        i_feat = self.i_backbone(x3[sub == 1].detach()) #detach grad
+        #print(x3.shape)
+        vnum, inum = x3[sub == 0].shape[0], x3[sub == 1].shape[0]
+        if vnum != 0: v_feat = self.v_backbone(x3[sub == 0].detach()) #detach grad
+        else: v_feat = None
+        if inum != 0: i_feat = self.i_backbone(x3[sub == 1].detach()) #detach grad
+        else: i_feat = None
         # v_feat = self.v_backbone(ReverseGrad(x3[sub == 0], self._alpha)) #reverse grad
         # i_feat = self.i_backbone(ReverseGrad(x3[sub == 1], self._alpha)) #reverse grad
-        v_feat = v_feat.mean(dim=(2, 3))
-        i_feat = i_feat.mean(dim=(2, 3))
+        
+        if self.base_dim == 768:
+            if v_feat is not None: v_feat = v_feat.mean(dim=(1))
+            if i_feat is not None: i_feat = i_feat.mean(dim=(1))
+            global_feat = global_feat.mean(dim=(1))
+        else:
+            v_feat = v_feat.mean(dim=(2, 3))
+            i_feat = i_feat.mean(dim=(2, 3))
+            global_feat = global_feat.mean(dim=(2, 3))
 
 
-        b, c, w, h = global_feat.shape
+        #b, c, w, h = global_feat.shape
 
         # part_feat, attn = self.attn_pool(global_feat)
-        global_feat = global_feat.mean(dim=(2, 3))
+        
         feats = global_feat
 
         if not self.training:
             feats = self.bn_neck(feats, sub)
             feats2 = torch.zeros_like(feats, device=feats.device)
-            v_feat = self.v_neck(v_feat)
-            i_feat = self.i_neck(i_feat)
-            feats2[sub == 0] = v_feat
-            feats2[sub == 1] = i_feat
+            if v_feat is not None: v_feat = self.v_neck(v_feat)
+            if i_feat is not None: i_feat = self.i_neck(i_feat)
+            if v_feat is not None: feats2[sub == 0] = v_feat
+            if i_feat is not None: feats2[sub == 1] = i_feat
             return feats, feats2
         else:
             return self.train_forward(feats, labels, 0, sub, v_feat, i_feat, **kwargs)
